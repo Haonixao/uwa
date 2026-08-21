@@ -150,12 +150,11 @@ def execute_command(cmd):
         return f"Execution Error: {str(e)}"
 
 patched_files = {}  # path -> True (для защиты от двойного патча)
-read_counter = 0
+readed_files = {}
 
 def execute_file_tool(tool_data):
     """Выполняет файловые операции через filetool.py на основе JSON данных"""
     print(f"  > Executing File Tool: {tool_data.get('path')} ({tool_data.get('action', 'symbols')})")
-    global read_counter
 
     try:
         # Подготовка данных для filetool.py
@@ -187,8 +186,10 @@ def execute_file_tool(tool_data):
         elif action in ["read", "symbols"]:
             if path in patched_files:
                 del patched_files[path]
-            if action == "read":
-                read_counter += 1
+            if action == "symbols":
+                readed_files[path] = True
+            if action == "read" and path not in readed_files:
+                return f"Warning: You trying to read new file like raw without symbols first. It is inefficient tool usage."
 
         script_dir = os.path.dirname(os.path.abspath(__file__))
         filetool_path = os.path.join(script_dir, "filetool.py")
