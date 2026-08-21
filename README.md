@@ -12,6 +12,7 @@ It effectively gives the AI persistent, real-world execution capabilities.
 - **Terminal Execution** — Run any commands with full output capture
 - **File Operations** — Safe read/patch/symbols (with ctags and Markdown support)
 - **Autonomous & Safe** — Continuous monitoring with Double Patch Protection
+- **Auto-injection** — Automatically pastes results back into the chat via `$UWA_INPUT` tag
 - **Chrome Integration** — Automatically finds the active tab via DevTools Protocol
 
 ## Web AI chats tested
@@ -66,7 +67,13 @@ sudo snap install universal-ctags --classic
 python agent_executor.py
 ```
 
-The agent is now ready. Results in `out.json` are automatically cleaned (large `new_text`/`old_text` blocks are truncated to 50 chars) to keep the chat history concise.
+4. **Start the session:**
+Copy the content of `agent.md` and paste it into your Web AI chat. This initializes the communication protocol.
+
+5. **Execution Loop (Optional Auto-injection):**
+When you want the agent to execute something, send your message to the AI. *After* the message is sent, type the `$UWA_INPUT` tag into the chat's input field. The agent will execute the requested tools and attempt to automatically inject the results back into that field.
+
+> **Note**: This is an experimental feature. It only works if you manually place the tag in the input field and may not be compatible with all AI chat interfaces yet.
 
 ## Safety Notes
 

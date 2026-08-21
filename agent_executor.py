@@ -38,6 +38,95 @@ async def get_page_text(websocket):
     response = await websocket.recv()
     return json.loads(response).get('result', {}).get('result', {}).get('value', '')
 
+
+
+async def set_page_input(websocket, text, attempts=10, delay=3):
+    """
+    Пытается найти поле с $UWA_INPUT и заменить его на текст.
+    Делает несколько попыток, если тег еще не появился.
+    """
+    safe_text = json.dumps(text)
+    
+    js_code = f"""
+    (function() {{
+        const inputs = Array.from(document.querySelectorAll('textarea, [contenteditable="true"]'));
+        for (let i = inputs.length - 1; i >= 0; i--) {{
+            let el = inputs[i];
+            if (el.hasAttribute('readonly') || el.getAttribute('aria-readonly') === 'true') continue;
+
+            let isTextarea = el.tagName === 'TEXTAREA';
+            let content = isTextarea ? el.value : el.innerText;
+            
+            if (content.includes('$UWA_INPUT')) {{
+                el.focus();
+                
+                // Создаем Range для поиска текста $UWA_INPUT внутри элемента
+                if (!isTextarea) {{
+                    const selection = window.getSelection();
+                    const range = document.createRange();
+                    
+                    // Ищем текстовый узел, содержащий наш тег
+                    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null, false);
+                    let node;
+                    while(node = walker.nextNode()) {{
+                        let index = node.textContent.indexOf('$UWA_INPUT');
+                        if (index !== -1) {{
+                            range.setStart(node, index);
+                            range.setEnd(node, index + '$UWA_INPUT'.length);
+                            selection.removeAllRanges();
+                            selection.addRange(range);
+                            break;
+                        }}
+                    }}
+                }} else {{
+                    // Для textarea используем стандартное выделение
+                    let start = el.value.indexOf('$UWA_INPUT');
+                    el.setSelectionRange(start, start + '$UWA_INPUT'.length);
+                }}
+
+                // Магия: используем execCommand, который имитирует ввод пользователя
+                // Это заставляет React/Vue и прочие фреймворки гарантированно обновить состояние
+                const success = document.execCommand('insertText', false, {safe_text});
+                
+                // Если execCommand не сработал (редко, но бывает), пробуем запасной вариант
+                if (!success) {{
+                    if (isTextarea) {{
+                        el.value = el.value.replace('$UWA_INPUT', {safe_text});
+                    }} else {{
+                        el.innerText = el.innerText.replace('$UWA_INPUT', {safe_text});
+                    }}
+                    el.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                }}
+
+                return true;
+            }}
+        }}
+        return false;
+    }})()
+    """
+
+    print(f"  [*] Waiting for $UWA_INPUT tag on page...")
+    
+    for i in range(attempts):
+        await websocket.send(json.dumps({
+            'id': 100 + i, # Уникальный ID для каждого вызова в рамках сессии
+            'method': 'Runtime.evaluate',
+            'params': {'expression': js_code, 'returnByValue': True}
+        }))
+        
+        response = await websocket.recv()
+        result = json.loads(response).get('result', {}).get('result', {}).get('value', False)
+        
+        if result:
+            print(f"  [+] $UWA_INPUT filled on attempt {i+1}.")
+            return True
+        
+        if i < attempts - 1:
+            await asyncio.sleep(delay)
+            
+    print("  [!] $UWA_INPUT not found after all attempts. Skipping autofill.")
+    return False
+
 def execute_command(cmd):
     """Выполняет команду в терминале кроссплатформенно"""
     print(f"  > Executing Terminal: {cmd}")
@@ -206,6 +295,10 @@ async def main_loop():
                             with open(output_file, "w", encoding="utf-8") as f:
                                 json.dump(error_response, f, ensure_ascii=False, indent=2)
                             print(f"\n[!] Multiple blocks detected. Error written to {output_file}")
+                            
+                            result_text = json.dumps(error_response, ensure_ascii=False, indent=2)
+                            await set_page_input(websocket, result_text)
+
                             last_processed_msgid = current_msgid
                             continue
 
@@ -254,6 +347,9 @@ async def main_loop():
                         
                         print(f"  > Result written to {output_file}. Please copy it manually.")
                         last_processed_msgid = current_msgid
+
+                        result_text = json.dumps(response, ensure_ascii=False, indent=2)
+                        await set_page_input(websocket, result_text)
                 
                 except json.JSONDecodeError as e:
                     # Если это не валидный JSON, но содержит uwa_msg_id, попробуем сообщить об ошибке
@@ -269,6 +365,10 @@ async def main_loop():
                             with open(output_file, "w", encoding="utf-8") as f:
                                 json.dump(error_response, f, ensure_ascii=False, indent=2)
                             print(f"  > Error written to {output_file}")
+
+                            result_text = json.dumps(error_response, ensure_ascii=False, indent=2)
+                            await set_page_input(websocket, result_text)
+
                             last_processed_msgid = error_id
 
                 await asyncio.sleep(2)
