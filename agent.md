@@ -38,7 +38,7 @@ The agent must send a message containing a JSON block. Only **one** JSON block i
 
 - **type**: `terminal`
 - **command**: The command string. Executed cross-platform via the system shell (`/bin/sh` or `cmd.exe`).
-- **Features:** Supports command chaining via `&&`. Execution timeout is 60 seconds.
+- **Features:** Supports command chaining via `&&`. Execution timeout is 180 seconds.
 
 ### 2. FILE Tool
 
@@ -54,9 +54,9 @@ The agent must send a message containing a JSON block. Only **one** JSON block i
 #### FILE Tool Parameters:
 
 - **read**: Requires `start` and `end` (line numbers, starting from 1).
-- **patch (line mode)**: Requires `start`, `end`, and `new_text`. Replaces the specified line range.
 - **patch (search mode)**: Requires `old_text` and `new_text`.
   - `replace_all` (bool): If `true`, replaces all occurrences of `old_text`. Defaults to `false`.
+- **patch (line mode)**: Requires `start`, `end`, and `new_text`. Replaces the specified line range. This mode is very useful when the text to be replaced is very complex and errors occur in **patch (search mode)**.
 
 ## Output Format (out.json)
 
@@ -104,20 +104,31 @@ If the JSON is invalid or rules are violated (e.g., multiple blocks), the respon
 1. **ID Uniqueness:** Every new message must have a unique `uwa_msg_id`. The script ignores messages with an already processed ID.
 1. **One Block Per Message:** If two unprocessed JSON blocks with different IDs are found on the page, the script will return an error, requiring them to be sent one at a time.
 1. **Text Cleaning:** The environment automatically removes invisible Unicode characters (Zero Width Space, etc.) before parsing your JSON.
+1. **Context Compression Protocol Recovery:** After each context session compression, the agent **must** explicitly note in the compression summary that `agent.md` needs to be re-read and the UWA Tools communication protocol must be restored in the context before continuing with further work.
+1. **Skills System Integration:** The agent **must** always consult `skills.json` at the start of each session to discover available skills and their triggers. During user interactions, continuously analyze user requests against skill triggers to automatically recognize and apply relevant skills. Skills extend agent capabilities and should be leveraged opportunistically throughout the workflow.
 
-## Strategy: Line-Mode Priority
+## Context Recovery Request
 
-**Default Requirement:** You MUST prioritize `patch` in **line mode** (`start`, `end`, `new_text`) as your default editing strategy.
+This is the exact request to restore context after compression.
 
-**Why?**
-
-- **Token Conservation:** Line mode avoids duplicating source code in `old_text`, saving significant context space and reducing latency.
-- **Deterministic Accuracy:** It bypasses common `old_text` matching failures caused by invisible characters or duplicate code blocks.
-- **Safety:** The **Double Patch Protection** rule (mandatory `read` after each edit) ensures line numbers remain perfectly synchronized.
-
-**Justification Policy:** You are allowed to use search mode (`old_text`) only if you can internally justify why it is more appropriate for a specific case (e.g., a global `replace_all` or a trivial one-word fix). Using search mode for multi-line blocks without a clear rationale is considered inefficient tool usage.
-
-## Pro-Tips
-
-- **Markdown Navigation**: Use `symbols` on `.md` files to get a structured list of headings. It's the fastest way to map out documentation.
-- **Efficient Patching**: You can include a `read` tool *after* a `patch` tool for the same file in a single message. This immediately satisfies the **Double Patch Protection** rule, allowing you to perform another line-mode patch in your very next message without an extra round-trip.
+```json
+{
+  "uwa_msg_id": "restore_context_protocol_001",
+  "tools": [
+        {
+          "type": "file",
+          "path": "agent.md",
+          "action": "read",
+          "start": 1,
+          "end": 1000
+        },
+    {
+      "type": "file",
+      "path": "skills.json",
+      "action": "read",
+      "start": 1,
+      "end": 1000
+    }
+  ]
+}
+```

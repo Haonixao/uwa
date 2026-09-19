@@ -140,7 +140,7 @@ def execute_command(cmd):
             text=True,
             encoding="utf-8",
             errors="replace",
-            timeout=60
+            timeout=180
         )
         output = result.stdout if result.stdout else ""
         if result.stderr:
@@ -150,7 +150,6 @@ def execute_command(cmd):
         return f"Execution Error: {str(e)}"
 
 patched_files = {}  # path -> True (для защиты от двойного патча)
-readed_files = {}
 
 def execute_file_tool(tool_data):
     """Выполняет файловые операции через filetool.py на основе JSON данных"""
@@ -186,10 +185,6 @@ def execute_file_tool(tool_data):
         elif action in ["read", "symbols"]:
             if path in patched_files:
                 del patched_files[path]
-            if action == "symbols":
-                readed_files[path] = True
-            if action == "read" and path not in readed_files:
-                return f"Warning: You trying to read file first time like raw without symbols first. It is inefficient tool usage. This is a one-time warning for all first readings. This is not a requirement to use symbols every time you read any file after first reading."
 
         script_dir = os.path.dirname(os.path.abspath(__file__))
         filetool_path = os.path.join(script_dir, "filetool.py")

@@ -1,0 +1,56 @@
+[
+    {
+        "name": "skill-creator",
+        "path": "skills/skill-creator.md",
+        "short-description": "Meta-skill for creating, refining, and validating new skills for the UWA system",
+        "short-triggers": [
+            "create new skill",
+            "design skill workflow",
+            "add skill to system",
+            "skill documentation",
+            "extend capabilities",
+            "skill refactoring"
+        ]
+    },
+    {
+        "name": "kilo-subagent",
+        "path": "skills/kilo-subagent.md",
+        "short-description": "Technical subagent for code search, complex file editing, and information gathering using lightweight auxiliary models",
+        "short-triggers": [
+            "find function definition",
+            "search code pattern",
+            "complex file editing",
+            "gather codebase info",
+            "file tool error",
+            "tedious file operations",
+            "locate implementation"
+        ]
+    },
+    {
+        "name": "go-packages-analyze",
+        "path": "skills/go-packages-analyze.md",
+        "short-description": "Analyze Go packages locally from module cache to debug incorrect package usage and verify type signatures",
+        "short-triggers": [
+            "go package analyze",
+            "go compilation error",
+            "undefined struct field",
+            "incorrect package usage",
+            "verify function signature",
+            "go module cache"
+        ]
+        },
+        {
+            "name": "user-overview",
+            "path": "skills/user-overview.md",
+            "short-description": "Maintain personal model-specific knowledge bases about the user through subjective diaries in user-overview/ directory",
+            "short-triggers": [
+                "user profile",
+                "personal notes about user",
+                "user preferences",
+                "user competencies",
+                "model perspective on user",
+                "read user diary",
+                "update user overview"
+            ]
+        }
+    ]
