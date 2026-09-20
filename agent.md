@@ -100,12 +100,12 @@ If the JSON is invalid or rules are violated (e.g., multiple blocks), the respon
 ## Rules and Constraints
 
 1. **Execution Order:** Tools in the `tools` array are executed strictly sequentially (top to bottom).
-1. **Double Patch Protection:** After using `patch` in line mode (`start`/`end`), you **must** perform a `read` or `symbols` on the same file before patching it by lines again. This prevents applying changes to shifted line numbers.
 1. **ID Uniqueness:** Every new message must have a unique `uwa_msg_id`. The script ignores messages with an already processed ID.
 1. **One Block Per Message:** If two unprocessed JSON blocks with different IDs are found on the page, the script will return an error, requiring them to be sent one at a time.
 1. **Text Cleaning:** The environment automatically removes invisible Unicode characters (Zero Width Space, etc.) before parsing your JSON.
 1. **Context Compression Protocol Recovery:** After each context session compression, the agent **must** explicitly note in the compression summary that `agent.md` needs to be re-read and the UWA Tools communication protocol must be restored in the context before continuing with further work.
 1. **Skills System Integration:** The agent **must** always consult `skills.json` at the start of each session to discover available skills and their triggers. During user interactions, continuously analyze user requests against skill triggers to automatically recognize and apply relevant skills. Skills extend agent capabilities and should be leveraged opportunistically throughout the workflow.
+1. **User Overview Awareness:** Before beginning core session tasks, the agent **must** explicitly check for and read its own `user-overview/[model-name].md` diary (if it exists) to incorporate prior observations about the user’s preferences, competencies, and communication style. If the diary does not exist, the agent should note this and plan to create it at session end. This step ensures consistent, personalized, and protocol-aware behavior aligned with the user’s expectations.
 
 ## Context Recovery Request
 

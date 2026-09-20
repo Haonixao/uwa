@@ -207,29 +207,48 @@ def execute_file_tool(tool_data):
         return f"File Tool Error: {str(e)}"
 
 def extract_json_blocks(text):
-    """Находит все JSON-блоки, содержащие uwa_msg_id, с учетом вложенных скобок"""
+    """Находит все JSON-блоки, содержащие uwa_msg_id, с учетом вложенных скобок и строк"""
     blocks = []
-    # Ищем все вхождения "uwa_msg_id"
     for match in re.finditer(r'"uwa_msg_id"\s*:', text):
         start_idx = text.rfind('{', 0, match.start())
         if start_idx == -1:
             continue
-            
-        # Считаем баланс скобок
+
         brace_count = 0
+        in_string = False
+        escaped = False
         end_idx = -1
+
         for i in range(start_idx, len(text)):
-            if text[i] == '{':
+            ch = text[i]
+
+            if escaped:
+                escaped = False
+                continue
+
+            if ch == '\\':
+                escaped = True
+                continue
+
+            if ch == '"':
+                in_string = not in_string
+                continue
+
+            if in_string:
+                continue
+
+            if ch == '{':
                 brace_count += 1
-            elif text[i] == '}':
+            elif ch == '}':
                 brace_count -= 1
                 if brace_count == 0:
                     end_idx = i + 1
                     break
-        
+
         if end_idx != -1:
             blocks.append(text[start_idx:end_idx])
     return blocks
+
 
 async def main_loop():
     page_id = get_dynamic_page_id()
