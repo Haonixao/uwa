@@ -38,19 +38,24 @@
             "verify function signature",
             "go module cache"
         ]
-        },
-        {
-            "name": "user-overview",
-            "path": "skills/user-overview.md",
-            "short-description": "Maintain personal model-specific knowledge bases about the user through subjective diaries in user-overview/ directory",
-            "short-triggers": [
-                "user profile",
-                "personal notes about user",
-                "user preferences",
-                "user competencies",
-                "model perspective on user",
-                "read user diary",
-                "update user overview"
-            ]
-        }
-    ]
+    },
+    {
+        "name": "user-overview",
+        "path": "skills/user-overview.md",
+        "short-description": "Maintain personal model-specific knowledge bases about the user through subjective diaries in user-overview/ directory",
+        "short-triggers": [
+            "user profile",
+            "personal notes about user",
+            "user preferences",
+            "user competencies",
+            "model perspective on user",
+            "read user diary",
+            "update user overview"
+        ],
+        "existed": [
+            "user-overview/alice-ai.md",
+            "user-overview/claude-haiku.md",
+            "user-overview/gpt-5-6-luna.md"
+        ]
+    }
+]
