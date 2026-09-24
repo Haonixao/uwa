@@ -115,13 +115,13 @@ This is the exact request to restore context after compression.
 {
   "uwa_msg_id": "restore_context_protocol_001",
   "tools": [
-        {
-          "type": "file",
-          "path": "agent.md",
-          "action": "read",
-          "start": 1,
-          "end": 1000
-        },
+    {
+      "type": "file",
+      "path": "agent.md",
+      "action": "read",
+      "start": 1,
+      "end": 1000
+    },
     {
       "type": "file",
       "path": "skills.json",
