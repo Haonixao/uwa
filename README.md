@@ -32,12 +32,13 @@ It effectively gives the AI persistent, real-world execution capabilities.
 
 ## Files
 
-| File | Purpose |
+| File                | Purpose                                                 |
 | ------------------- | ------------------------------------------------------- |
-| `agent_executor.py` | Main autonomous loop (core) |
-| `filetool.py` | Safe file read/patch operations |
-| `agent.md` | Communication protocol specification (Send it to model) |
-| `README.md` | This documentation |
+| `agent_executor.py` | Main autonomous loop (core)                             |
+| `filetool.py`       | Safe file read/patch operations                         |
+| `uwa`               | Executor                                                |
+| `agent.md`          | Communication protocol specification (Send it to model) |
+| `README.md`         | This documentation                                      |
 
 ## Quick Start
 
@@ -64,14 +65,14 @@ sudo snap install universal-ctags --classic
 3. **Run the agent:**
 
 ```bash
-python agent_executor.py
+./uwa
 ```
 
 4. **Start the session:**
-Copy the content of `agent.md` and paste it into your Web AI chat. This initializes the communication protocol.
+   Copy the content of `agent.md` and paste it into your Web AI chat. This initializes the communication protocol.
 
 5. **Execution Loop (Optional Auto-injection):**
-When you want the agent to execute something, send your message to the AI. *After* the message is sent, type the `$UWA_INPUT` tag into the chat's input field. The agent will execute the requested tools and attempt to automatically inject the results back into that field.
+   When you want the agent to execute something, send your message to the AI. _After_ the message is sent, type the `$UWA_INPUT` tag into the chat's input field. The agent will execute the requested tools and attempt to automatically inject the results back into that field.
 
 > **Note**: This is an experimental feature. It only works if you manually place the tag in the input field and may not be compatible with all AI chat interfaces yet.
 
@@ -80,6 +81,6 @@ When you want the agent to execute something, send your message to the AI. *Afte
 - The agent only executes commands you explicitly request through tool calls
 - Use with trusted AI models only
 
-______________________________________________________________________
+---
 
 **Disclaimer**: This project is in the early MVP stage. You are fully responsible for the commands you allow the agent to execute and any consequences that may result.

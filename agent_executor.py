@@ -260,8 +260,7 @@ async def main_loop():
     output_file = "out.json"
 
     try:
-        async with websockets.connect(uri) as websocket:
-            print(f"--- JSON-based Agent Executor (Output to {output_file}) ---")
+        async with websockets.connect(uri) as websocket: # pyright: ignore[reportAttributeAccessIssue]
             print(f"[*] Connected to Page: {page_id}")
             print("[*] Monitoring for JSON blocks with 'uwa_msg_id'...")
 
