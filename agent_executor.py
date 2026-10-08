@@ -1,15 +1,16 @@
 import asyncio
-import json
-import re
-import sys
-import websockets
-import subprocess
-import time
 import http.client
+import json
 import os
+import re
+import subprocess
+import sys
+
+import websockets
 
 # Настройка окружения для корректной работы UTF-8
 os.environ["PYTHONIOENCODING"] = "utf-8"
+
 
 def get_dynamic_page_id():
     """Автоматически находит ID первой подходящей страницы через HTTP API Chrome"""
@@ -20,24 +21,31 @@ def get_dynamic_page_id():
         if response.status == 200:
             data = json.loads(response.read())
             for item in data:
-                if item.get('type') == 'page' and 'url' in item:
+                if item.get("type") == "page" and "url" in item:
                     print(f"[*] Found page: {item.get('title')} (ID: {item.get('id')})")
-                    return item.get('id')
+                    return item.get("id")
         return None
     except Exception as e:
         print(f"Error fetching page ID: {e}")
         return None
 
+
 async def get_page_text(websocket):
     """Возвращает весь текст страницы"""
-    await websocket.send(json.dumps({
-        'id': 1,
-        'method': 'Runtime.evaluate',
-        'params': {'expression': 'document.body.innerText', 'returnByValue': True}
-    }))
+    await websocket.send(
+        json.dumps(
+            {
+                "id": 1,
+                "method": "Runtime.evaluate",
+                "params": {
+                    "expression": "document.body.innerText",
+                    "returnByValue": True,
+                },
+            }
+        )
+    )
     response = await websocket.recv()
-    return json.loads(response).get('result', {}).get('result', {}).get('value', '')
-
+    return json.loads(response).get("result", {}).get("result", {}).get("value", "")
 
 
 async def set_page_input(websocket, text, attempts=10, delay=3):
@@ -46,7 +54,7 @@ async def set_page_input(websocket, text, attempts=10, delay=3):
     Делает несколько попыток, если тег еще не появился.
     """
     safe_text = json.dumps(text)
-    
+
     js_code = f"""
     (function() {{
         const inputs = Array.from(document.querySelectorAll('textarea, [contenteditable="true"]'));
@@ -56,15 +64,15 @@ async def set_page_input(websocket, text, attempts=10, delay=3):
 
             let isTextarea = el.tagName === 'TEXTAREA';
             let content = isTextarea ? el.value : el.innerText;
-            
+
             if (content.includes('$UWA_INPUT')) {{
                 el.focus();
-                
+
                 // Создаем Range для поиска текста $UWA_INPUT внутри элемента
                 if (!isTextarea) {{
                     const selection = window.getSelection();
                     const range = document.createRange();
-                    
+
                     // Ищем текстовый узел, содержащий наш тег
                     const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null, false);
                     let node;
@@ -87,7 +95,7 @@ async def set_page_input(websocket, text, attempts=10, delay=3):
                 // Магия: используем execCommand, который имитирует ввод пользователя
                 // Это заставляет React/Vue и прочие фреймворки гарантированно обновить состояние
                 const success = document.execCommand('insertText', false, {safe_text});
-                
+
                 // Если execCommand не сработал (редко, но бывает), пробуем запасной вариант
                 if (!success) {{
                     if (isTextarea) {{
@@ -105,27 +113,34 @@ async def set_page_input(websocket, text, attempts=10, delay=3):
     }})()
     """
 
-    print(f"  [*] Waiting for $UWA_INPUT tag on page...")
-    
+    print("  [*] Waiting for $UWA_INPUT tag on page...")
+
     for i in range(attempts):
-        await websocket.send(json.dumps({
-            'id': 100 + i, # Уникальный ID для каждого вызова в рамках сессии
-            'method': 'Runtime.evaluate',
-            'params': {'expression': js_code, 'returnByValue': True}
-        }))
-        
+        await websocket.send(
+            json.dumps(
+                {
+                    "id": 100 + i,  # Уникальный ID для каждого вызова в рамках сессии
+                    "method": "Runtime.evaluate",
+                    "params": {"expression": js_code, "returnByValue": True},
+                }
+            )
+        )
+
         response = await websocket.recv()
-        result = json.loads(response).get('result', {}).get('result', {}).get('value', False)
-        
+        result = (
+            json.loads(response).get("result", {}).get("result", {}).get("value", False)
+        )
+
         if result:
-            print(f"  [+] $UWA_INPUT filled on attempt {i+1}.")
+            print(f"  [+] $UWA_INPUT filled on attempt {i + 1}.")
             return True
-        
+
         if i < attempts - 1:
             await asyncio.sleep(delay)
-            
+
     print("  [!] $UWA_INPUT not found after all attempts. Skipping autofill.")
     return False
+
 
 def execute_command(cmd):
     """Выполняет команду в терминале кроссплатформенно"""
@@ -140,20 +155,24 @@ def execute_command(cmd):
             text=True,
             encoding="utf-8",
             errors="replace",
-            timeout=180
+            timeout=180,
         )
         output = result.stdout if result.stdout else ""
         if result.stderr:
             output += "\nError:\n" + result.stderr
         return output.strip()
     except Exception as e:
-        return f"Execution Error: {str(e)}"
+        return f"Execution Error: {e!s}"
+
 
 patched_files = {}  # path -> True (для защиты от двойного патча)
 
+
 def execute_file_tool(tool_data):
     """Выполняет файловые операции через filetool.py на основе JSON данных"""
-    print(f"  > Executing File Tool: {tool_data.get('path')} ({tool_data.get('action', 'symbols')})")
+    print(
+        f"  > Executing File Tool: {tool_data.get('path')} ({tool_data.get('action', 'symbols')})"
+    )
 
     try:
         # Подготовка данных для filetool.py
@@ -164,7 +183,7 @@ def execute_file_tool(tool_data):
             "end": tool_data.get("end"),
             "old_text": tool_data.get("old_text"),
             "new_text": tool_data.get("new_text"),
-            "replace_all": tool_data.get("replace_all")
+            "replace_all": tool_data.get("replace_all"),
         }
 
         # Очистка None значений
@@ -183,16 +202,18 @@ def execute_file_tool(tool_data):
                 return f"Error: Double patch with strings range detected for {path} without read/symbols in between. This can lead to incorrect changes. Do read and then patch with strings range again. Or use patch with old_text + new_text (no double patch problem in this case)"
             patched_files[path] = True
         elif action in ["read", "symbols"]:
-            if path in patched_files:
-                del patched_files[path]
+            patched_files.pop(path, None)
 
         script_dir = os.path.dirname(os.path.abspath(__file__))
         filetool_path = os.path.join(script_dir, "filetool.py")
 
         process = subprocess.Popen(
             [sys.executable, filetool_path],
-            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            text=True, encoding="utf-8"
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
         )
 
         stdout, stderr = process.communicate(input=json.dumps(data))
@@ -204,13 +225,14 @@ def execute_file_tool(tool_data):
         return output
 
     except Exception as e:
-        return f"File Tool Error: {str(e)}"
+        return f"File Tool Error: {e!s}"
+
 
 def extract_json_blocks(text):
     """Находит все JSON-блоки, содержащие uwa_msg_id, с учетом вложенных скобок и строк"""
     blocks = []
     for match in re.finditer(r'"uwa_msg_id"\s*:', text):
-        start_idx = text.rfind('{', 0, match.start())
+        start_idx = text.rfind("{", 0, match.start())
         if start_idx == -1:
             continue
 
@@ -226,7 +248,7 @@ def extract_json_blocks(text):
                 escaped = False
                 continue
 
-            if ch == '\\':
+            if ch == "\\":
                 escaped = True
                 continue
 
@@ -237,9 +259,9 @@ def extract_json_blocks(text):
             if in_string:
                 continue
 
-            if ch == '{':
+            if ch == "{":
                 brace_count += 1
-            elif ch == '}':
+            elif ch == "}":
                 brace_count -= 1
                 if brace_count == 0:
                     end_idx = i + 1
@@ -253,14 +275,16 @@ def extract_json_blocks(text):
 async def main_loop():
     page_id = get_dynamic_page_id()
     if not page_id:
-        print("Error: Could not find page. Check if Chrome is open with --remote-debugging-port=9222")
+        print(
+            "Error: Could not find page. Check if Chrome is open with --remote-debugging-port=9222"
+        )
         return
 
-    uri = f'ws://localhost:9222/devtools/page/{page_id}'
+    uri = f"ws://localhost:9222/devtools/page/{page_id}"
     output_file = "out.json"
 
     try:
-        async with websockets.connect(uri) as websocket: # pyright: ignore[reportAttributeAccessIssue]
+        async with websockets.connect(uri) as websocket:  # pyright: ignore[reportAttributeAccessIssue]
             print(f"[*] Connected to Page: {page_id}")
             print("[*] Monitoring for JSON blocks with 'uwa_msg_id'...")
 
@@ -268,10 +292,10 @@ async def main_loop():
 
             while True:
                 full_text = await get_page_text(websocket)
-                
+
                 # Ищем все JSON-подобные блоки в тексте страницы с учетом вложенности
                 json_blocks = extract_json_blocks(full_text)
-                
+
                 if not json_blocks:
                     await asyncio.sleep(2)
                     continue
@@ -279,92 +303,117 @@ async def main_loop():
                 # Извлекаем данные последнего и предпоследнего блоков для проверки
                 last_block_str = json_blocks[-1]
                 pr_msgid = None
-                
+
                 if len(json_blocks) >= 2:
                     try:
-                        pr_block_str = re.sub(r'[\u200b-\u200d\ufeff]', '', json_blocks[-2])
+                        pr_block_str = re.sub(
+                            r"[\u200b-\u200d\ufeff]", "", json_blocks[-2]
+                        )
                         pr_data = json.loads(pr_block_str)
                         pr_msgid = pr_data.get("uwa_msg_id")
                     except:
                         pass
-                
+
                 try:
                     # Очистка текста от возможных невидимых символов перед парсингом
-                    clean_json_str = re.sub(r'[\u200b-\u200d\ufeff]', '', last_block_str)
+                    clean_json_str = re.sub(
+                        r"[\u200b-\u200d\ufeff]", "", last_block_str
+                    )
                     request_data = json.loads(clean_json_str)
-                    
+
                     current_msgid = request_data.get("uwa_msg_id")
-                    
+
                     if current_msgid and current_msgid != last_processed_msgid:
                         # Защита от множественных блоков (как было раньше)
-                        if pr_msgid is not None and last_processed_msgid is not None and pr_msgid != last_processed_msgid:
+                        if (
+                            pr_msgid is not None
+                            and last_processed_msgid is not None
+                            and pr_msgid != last_processed_msgid
+                        ):
                             error_response = {
                                 "uwa_msg_id": current_msgid,
                                 "error": (
                                     "Error: Multiple JSON tool blocks were detected.\n"
                                     f"Previous unprocessed ID: {pr_msgid}\n"
                                     "Only one JSON block per message is allowed."
-                                )
+                                ),
                             }
                             with open(output_file, "w", encoding="utf-8") as f:
-                                json.dump(error_response, f, ensure_ascii=False, indent=2)
-                            print(f"\n[!] Multiple blocks detected. Error written to {output_file}")
-                            
-                            result_text = json.dumps(error_response, ensure_ascii=False, indent=2)
+                                json.dump(
+                                    error_response, f, ensure_ascii=False, indent=2
+                                )
+                            print(
+                                f"\n[!] Multiple blocks detected. Error written to {output_file}"
+                            )
+
+                            result_text = json.dumps(
+                                error_response, ensure_ascii=False, indent=2
+                            )
                             await set_page_input(websocket, result_text)
 
                             last_processed_msgid = current_msgid
                             continue
 
                         print(f"\n[!] New JSON request detected (ID: {current_msgid})")
-                        
+
                         tools = request_data.get("tools", [])
                         if not tools:
-                            print(f"  > No tools found in request {current_msgid}. Skipping.")
+                            print(
+                                f"  > No tools found in request {current_msgid}. Skipping."
+                            )
                             last_processed_msgid = current_msgid
                             continue
 
                         print(f"  > Processing {len(tools)} tool(s)...")
                         results = []
-                        
+
                         for tool in tools:
                             tool_type = tool.get("type")
                             result_item = tool.copy()
-                            
+
                             if tool_type == "terminal":
                                 command = tool.get("command")
                                 if command:
                                     res = execute_command(command)
                                     result_item["result"] = res
                                 else:
-                                    result_item["result"] = "Error: Missing command for terminal tool."
-                            
+                                    result_item["result"] = (
+                                        "Error: Missing command for terminal tool."
+                                    )
+
                             elif tool_type == "file":
                                 res = execute_file_tool(tool)
                                 result_item["result"] = res
                                 for field in ["new_text", "old_text"]:
-                                    if field in result_item and isinstance(result_item[field], str) and len(result_item[field]) > 50:
-                                        result_item[field] = result_item[field][:50] + "..."
+                                    if (
+                                        field in result_item
+                                        and isinstance(result_item[field], str)
+                                        and len(result_item[field]) > 50
+                                    ):
+                                        result_item[field] = (
+                                            result_item[field][:50] + "..."
+                                        )
                             else:
-                                result_item["result"] = f"Error: Unknown tool type '{tool_type}'."
-                            
+                                result_item["result"] = (
+                                    f"Error: Unknown tool type '{tool_type}'."
+                                )
+
                             results.append(result_item)
 
                         # Формируем итоговый ответ
-                        response = {
-                            "uwa_msg_id": current_msgid,
-                            "tools": results
-                        }
-                        
+                        response = {"uwa_msg_id": current_msgid, "tools": results}
+
                         with open(output_file, "w", encoding="utf-8") as f:
                             json.dump(response, f, ensure_ascii=False, indent=2)
-                        
-                        print(f"  > Result written to {output_file}. Please copy it manually.")
+
+                        print(
+                            f"  > Result written to {output_file}. Please copy it manually."
+                        )
                         last_processed_msgid = current_msgid
 
                         result_text = json.dumps(response, ensure_ascii=False, indent=2)
                         await set_page_input(websocket, result_text)
-                
+
                 except json.JSONDecodeError as e:
                     # Если это не валидный JSON, но содержит uwa_msg_id, попробуем сообщить об ошибке
                     # Но только если мы можем вытащить ID
@@ -374,13 +423,17 @@ async def main_loop():
                         if error_id != last_processed_msgid:
                             error_response = {
                                 "uwa_msg_id": error_id,
-                                "error": f"JSON Decode Error: {str(e)}"
+                                "error": f"JSON Decode Error: {e!s}",
                             }
                             with open(output_file, "w", encoding="utf-8") as f:
-                                json.dump(error_response, f, ensure_ascii=False, indent=2)
+                                json.dump(
+                                    error_response, f, ensure_ascii=False, indent=2
+                                )
                             print(f"  > Error written to {output_file}")
 
-                            result_text = json.dumps(error_response, ensure_ascii=False, indent=2)
+                            result_text = json.dumps(
+                                error_response, ensure_ascii=False, indent=2
+                            )
                             await set_page_input(websocket, result_text)
 
                             last_processed_msgid = error_id
@@ -392,6 +445,7 @@ async def main_loop():
         print("Attempting to reconnect in 5 seconds...")
         await asyncio.sleep(5)
         await main_loop()
+
 
 if __name__ == "__main__":
     try:

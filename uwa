@@ -1,2 +1,2 @@
 echo "Running UWA..."
-python3 agent_executor.py
+python agent_executor.py

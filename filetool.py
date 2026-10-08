@@ -1,6 +1,7 @@
-import sys
 import json
 import os
+import sys
+
 
 def get_symbols(path: str):
     """
@@ -16,7 +17,7 @@ def get_symbols(path: str):
     ext = os.path.splitext(path)[1].lower()
 
     # === Markdown ===
-    if ext == '.md':
+    if ext == ".md":
         try:
             with open(path, "r", encoding="utf-8") as f:
                 lines = f.readlines()
@@ -24,10 +25,10 @@ def get_symbols(path: str):
             symbols = []
             for i, line in enumerate(lines, 1):
                 line = line.strip()
-                if line.startswith('#'):
+                if line.startswith("#"):
                     # Считаем уровень заголовка
                     level = 0
-                    while level < len(line) and line[level] == '#':
+                    while level < len(line) and line[level] == "#":
                         level += 1
                     title = line[level:].strip()
                     if title:
@@ -36,7 +37,7 @@ def get_symbols(path: str):
             if not symbols:
                 return "No headings found in markdown file."
 
-            header = f"Headings in {os.path.basename(path)}:\n" + "-"*70
+            header = f"Headings in {os.path.basename(path)}:\n" + "-" * 70
             return header + "\n" + "\n".join(symbols)
 
         except Exception as e:
@@ -44,15 +45,23 @@ def get_symbols(path: str):
 
     # === Кодовые файлы (ctags) ===
     try:
-        import subprocess
         import json
+        import subprocess
 
         result = subprocess.run(
-            ['ctags', '--output-format=json', '--fields=+n+e', '--extras=+q', '-f', '-', path],
+            [
+                "ctags",
+                "--output-format=json",
+                "--fields=+n+e",
+                "--extras=+q",
+                "-f",
+                "-",
+                path,
+            ],
             capture_output=True,
             text=True,
-            encoding='utf-8',
-            errors='ignore'
+            encoding="utf-8",
+            errors="ignore",
         )
 
         if result.returncode != 0:
@@ -84,13 +93,14 @@ def get_symbols(path: str):
         if not symbols:
             return f"No symbols found in {os.path.basename(path)}."
 
-        header = f"Symbols in {os.path.basename(path)}:\n" + "-"*70
+        header = f"Symbols in {os.path.basename(path)}:\n" + "-" * 70
         return header + "\n" + "\n".join(symbols)
 
     except FileNotFoundError:
         return "Error: ctags not found.\nInstall: choco install universal-ctags -y"
     except Exception as e:
         return f"Error: {str(e)}"
+
 
 def read_lines(path, start, end):
     if not os.path.exists(path):
@@ -104,7 +114,7 @@ def read_lines(path, start, end):
             lines = f.readlines()
 
         # 1-indexed slicing
-        selected = lines[start-1:end]
+        selected = lines[start - 1 : end]
 
         # Добавляем номера строк — это критично!
         numbered = []
@@ -115,6 +125,7 @@ def read_lines(path, start, end):
 
     except Exception as e:
         return f"Error reading file: {str(e)}"
+
 
 def write_patch(path, start, end, new_text):
     if not os.path.exists(path):
@@ -131,18 +142,27 @@ def write_patch(path, start, end, new_text):
         new_lines = new_text.splitlines(keepends=True)
 
         # Если new_text не заканчивается переносом, а оригинал заканчивался — добавляем
-        if new_lines and not new_lines[-1].endswith('\n') and (end <= len(lines) and lines[end-1].endswith('\n') if end > 0 else False):
-            new_lines[-1] += '\n'
+        if (
+            new_lines
+            and not new_lines[-1].endswith("\n")
+            and (
+                end <= len(lines) and lines[end - 1].endswith("\n")
+                if end > 0
+                else False
+            )
+        ):
+            new_lines[-1] += "\n"
 
         # Применяем патч
-        patched = lines[:start-1] + new_lines + lines[end:]
+        patched = lines[: start - 1] + new_lines + lines[end:]
 
-        with open(path, "w", encoding="utf-8", newline='') as f:
+        with open(path, "w", encoding="utf-8", newline="") as f:
             f.writelines(patched)
 
         return "OK"
     except Exception as e:
         return f"Error patching file: {str(e)}"
+
 
 def write_patch_with_old(path, old_text, new_text, replace_all=False):
     """
@@ -170,12 +190,13 @@ def write_patch_with_old(path, old_text, new_text, replace_all=False):
             new_content = content.replace(old_text, new_text, 1)
             count = 1
 
-        with open(path, "w", encoding="utf-8", newline='') as f:
+        with open(path, "w", encoding="utf-8", newline="") as f:
             f.write(new_content)
 
         return f"OK: replaced {count} occurrence(s)"
     except Exception as e:
         return f"Error patching file: {str(e)}"
+
 
 def main():
     try:
@@ -190,18 +211,31 @@ def main():
         path = data.get("path")
 
         if action == "read":
-            print(read_lines(path, int(data.get("start", 1)), int(data.get("end", 1000000))))
+            print(
+                read_lines(
+                    path, int(data.get("start", 1)), int(data.get("end", 1000000))
+                )
+            )
         elif action == "patch":
             old_text = data.get("old_text")
             if old_text is not None:
-                print(write_patch_with_old(
-                    path,
-                    old_text,
-                    data.get("new_text", ""),
-                    replace_all=data.get("replace_all", False)
-                ))
+                print(
+                    write_patch_with_old(
+                        path,
+                        old_text,
+                        data.get("new_text", ""),
+                        replace_all=data.get("replace_all", False),
+                    )
+                )
             else:
-                print(write_patch(path, int(data.get("start")), int(data.get("end")), data.get("new_text", "")))
+                print(
+                    write_patch(
+                        path,
+                        int(data.get("start")),
+                        int(data.get("end")),
+                        data.get("new_text", ""),
+                    )
+                )
         elif action == "symbols":
             result = get_symbols(path)
             print(result)
@@ -209,6 +243,7 @@ def main():
             print(f"Error: Unknown action '{action}'")
     except Exception as e:
         print(f"Error in filetool: {str(e)}")
+
 
 if __name__ == "__main__":
     main()
