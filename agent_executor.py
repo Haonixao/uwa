@@ -50,13 +50,34 @@ async def get_page_text(websocket):
 
 async def set_page_input(websocket, text, attempts=10, delay=3):
     """
-    Пытается найти поле с $UWA_INPUT и заменить его на текст.
-    Делает несколько попыток, если тег еще не появился.
+    Пытается вставить текст вместо $UWA_INPUT.
+    Каждая попытка: сценарий 1 — поиск элемента по тегу; при успехе путь к
+    элементу сохраняется в last_input_path. Сценарий 2 — вставка в элемент
+    по сохранённому пути, без поиска по тегу.
     """
+    global last_input_path
     safe_text = json.dumps(text)
 
-    js_code = f"""
+    js_find = f"""
     (function() {{
+        function buildPath(el) {{
+            if (el.id) return '#' + CSS.escape(el.id);
+            const parts = [];
+            let cur = el;
+            while (cur && cur.nodeType === 1 && cur !== document.body) {{
+                let sel = cur.tagName.toLowerCase();
+                if (cur.parentNode) {{
+                    const sibs = Array.from(cur.parentNode.children).filter(
+                        c => c.tagName === cur.tagName
+                    );
+                    if (sibs.length > 1) sel += ':nth-of-type(' + (sibs.indexOf(cur) + 1) + ')';
+                }}
+                parts.unshift(sel);
+                cur = cur.parentNode;
+            }}
+            return parts.join(' > ');
+        }}
+
         const inputs = Array.from(document.querySelectorAll('textarea, [contenteditable="true"]'));
         for (let i = inputs.length - 1; i >= 0; i--) {{
             let el = inputs[i];
@@ -68,12 +89,10 @@ async def set_page_input(websocket, text, attempts=10, delay=3):
             if (content.includes('$UWA_INPUT')) {{
                 el.focus();
 
-                // Создаем Range для поиска текста $UWA_INPUT внутри элемента
                 if (!isTextarea) {{
                     const selection = window.getSelection();
                     const range = document.createRange();
 
-                    // Ищем текстовый узел, содержащий наш тег
                     const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null, false);
                     let node;
                     while(node = walker.nextNode()) {{
@@ -87,16 +106,12 @@ async def set_page_input(websocket, text, attempts=10, delay=3):
                         }}
                     }}
                 }} else {{
-                    // Для textarea используем стандартное выделение
                     let start = el.value.indexOf('$UWA_INPUT');
                     el.setSelectionRange(start, start + '$UWA_INPUT'.length);
                 }}
 
-                // Магия: используем execCommand, который имитирует ввод пользователя
-                // Это заставляет React/Vue и прочие фреймворки гарантированно обновить состояние
                 const success = document.execCommand('insertText', false, {safe_text});
 
-                // Если execCommand не сработал (редко, но бывает), пробуем запасной вариант
                 if (!success) {{
                     if (isTextarea) {{
                         el.value = el.value.replace('$UWA_INPUT', {safe_text});
@@ -106,34 +121,95 @@ async def set_page_input(websocket, text, attempts=10, delay=3):
                     el.dispatchEvent(new Event('input', {{ bubbles: true }}));
                 }}
 
-                return true;
+                return JSON.stringify({{ ok: true, path: buildPath(el) }});
             }}
         }}
-        return false;
+        return JSON.stringify({{ ok: false }});
     }})()
     """
+
+    js_by_path_template = """
+    (function() {
+        let el = null;
+        try { el = document.querySelector(__PATH__); } catch (e) {
+            return JSON.stringify({ ok: false, stale: true });
+        }
+        if (!el) return JSON.stringify({ ok: false, stale: true });
+        if (el.hasAttribute('readonly') || el.getAttribute('aria-readonly') === 'true')
+            return JSON.stringify({ ok: false });
+
+        let isTextarea = el.tagName === 'TEXTAREA' || el.tagName === 'INPUT';
+
+        el.focus();
+
+        if (isTextarea) {
+            el.setSelectionRange(el.value.length, el.value.length);
+        } else {
+            const selection = window.getSelection();
+            if (selection) {
+                const range = document.createRange();
+                range.selectNodeContents(el);
+                range.collapse(false);
+                selection.removeAllRanges();
+                selection.addRange(range);
+            }
+        }
+
+        const success = document.execCommand('insertText', false, __SAFE_TEXT__);
+        if (!success) {
+            if (isTextarea) {
+                el.value = el.value.replace('$UWA_INPUT', __SAFE_TEXT__);
+            } else {
+                el.innerText = el.innerText.replace('$UWA_INPUT', __SAFE_TEXT__);
+            }
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+
+        return JSON.stringify({ ok: true });
+    })()
+    """
+
+    def make_js_by_path(path):
+        return js_by_path_template.replace(
+            "__PATH__", json.dumps(path)
+        ).replace("__SAFE_TEXT__", safe_text)
+
+    async def eval_js(expr, call_id):
+        await websocket.send(
+            json.dumps(
+                {
+                    "id": call_id,
+                    "method": "Runtime.evaluate",
+                    "params": {"expression": expr, "returnByValue": True},
+                }
+            )
+        )
+        response = await websocket.recv()
+        raw = json.loads(response).get("result", {}).get("result", {}).get("value", "")
+        try:
+            return json.loads(raw)
+        except (TypeError, ValueError):
+            return {}
 
     print("  [*] Waiting for $UWA_INPUT tag on page...")
 
     for i in range(attempts):
-        await websocket.send(
-            json.dumps(
-                {
-                    "id": 100 + i,  # Уникальный ID для каждого вызова в рамках сессии
-                    "method": "Runtime.evaluate",
-                    "params": {"expression": js_code, "returnByValue": True},
-                }
-            )
-        )
-
-        response = await websocket.recv()
-        result = (
-            json.loads(response).get("result", {}).get("result", {}).get("value", False)
-        )
-
-        if result:
-            print(f"  [+] $UWA_INPUT filled on attempt {i + 1}.")
+        data = await eval_js(js_find, 100 + i)
+        if data.get("ok"):
+            print(f"  [+] $UWA_INPUT filled on attempt {i + 1} (search).")
+            p = data.get("path")
+            if p:
+                last_input_path = p
             return True
+
+        if last_input_path:
+            data2 = await eval_js(make_js_by_path(last_input_path), 200 + i)
+            if data2.get("ok"):
+                print(f"  [+] $UWA_INPUT filled on attempt {i + 1} (saved path).")
+                return True
+            if data2.get("stale"):
+                print("  [*] Saved path is stale, clearing it.")
+                last_input_path = None
 
         if i < attempts - 1:
             await asyncio.sleep(delay)
@@ -166,6 +242,9 @@ def execute_command(cmd):
 
 
 patched_files = {}  # path -> True (для защиты от двойного патча)
+
+# CSS-путь к элементу с $UWA_INPUT из последней успешной вставки (сценарий 1)
+last_input_path = None
 
 
 def execute_file_tool(tool_data):

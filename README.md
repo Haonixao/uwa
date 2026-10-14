@@ -72,9 +72,9 @@ sudo snap install universal-ctags --classic
    Copy the content of `agent.md` and paste it into your Web AI chat. This initializes the communication protocol.
 
 5. **Execution Loop (Optional Auto-injection):**
-   When you want the agent to execute something, send your message to the AI. _After_ the message is sent, type the `$UWA_INPUT` tag into the chat's input field. The agent will execute the requested tools and attempt to automatically inject the results back into that field.
+   When you want the agent to execute something, send your message to the AI. On the first injection, type the `$UWA_INPUT` tag into the chat's input field. The agent will execute the requested tools, inject the results into that field, and remember the element it used. After that, results are injected into the same field automatically — no tag needed.
 
-> **Note**: This is an experimental feature. It only works if you manually place the tag in the input field and may not be compatible with all AI chat interfaces yet.
+> **Note**: This is an experimental feature. If the chat interface re-renders its input field, the saved element may become stale — in that case place the `$UWA_INPUT` tag manually once again to re-learn the field. May not be compatible with all AI chat interfaces yet.
 
 ## Safety Notes
 
