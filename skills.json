@@ -38,19 +38,5 @@
       "verify function signature",
       "go module cache"
     ]
-  },
-  {
-    "name": "user-overview",
-    "path": "skills/user-overview.md",
-    "short-description": "Maintain personal model-specific knowledge bases about the user through subjective diaries in user-overview/ directory",
-    "short-triggers": [
-      "user profile",
-      "personal notes about user",
-      "user preferences",
-      "user competencies",
-      "model perspective on user",
-      "read user diary",
-      "update user overview"
-    ]
   }
 ]

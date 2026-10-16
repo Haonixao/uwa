@@ -146,7 +146,6 @@ If the JSON is invalid or rules are violated (e.g., multiple blocks), the respon
 1. **Text Cleaning:** The environment automatically removes invisible Unicode characters (Zero Width Space, etc.) before parsing your JSON.
 1. **Context Compression Protocol Recovery:** After each context session compression, the agent **must** explicitly note in the compression summary that `agent.md` needs to be re-read and the UWA Tools communication protocol must be restored in the context before continuing with further work.
 1. **Skills System Integration:** The agent **must** always consult `skills.json` at the start of each session to discover available skills and their triggers. During user interactions, continuously analyze user requests against skill triggers to automatically recognize and apply relevant skills. Skills extend agent capabilities and should be leveraged opportunistically throughout the workflow.
-1. **User Overview Awareness:** Before beginning core session tasks, the agent **must** explicitly check for and read its own `user-overview/[model-name].md` diary (if it exists) to incorporate prior observations about the user’s preferences, competencies, and communication style. If the diary does not exist, the agent should note this and plan to create it at session end. This step ensures consistent, personalized, and protocol-aware behavior aligned with the user’s expectations.
 
 ## Context Recovery Request
 
