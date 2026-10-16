@@ -250,14 +250,14 @@ last_input_path = None
 def execute_file_tool(tool_data):
     """Выполняет файловые операции через filetool.py на основе JSON данных"""
     print(
-        f"  > Executing File Tool: {tool_data.get('path')} ({tool_data.get('action', 'symbols')})"
+        f"  > Executing File Tool: {tool_data.get('path')} ({tool_data.get('action')})"
     )
 
     try:
         # Подготовка данных для filetool.py
         data = {
             "path": tool_data.get("path"),
-            "action": tool_data.get("action", "symbols"),
+            "action": tool_data.get("action"),
             "start": tool_data.get("start"),
             "end": tool_data.get("end"),
             "old_text": tool_data.get("old_text"),
@@ -278,9 +278,9 @@ def execute_file_tool(tool_data):
         # === Защита от двойного патча (только для start-end режима) ===
         if action == "patch" and data.get("old_text") is None:
             if path in patched_files:
-                return f"Error: Double patch with strings range detected for {path} without read/symbols in between. This can lead to incorrect changes. Do read and then patch with strings range again. Or use patch with old_text + new_text (no double patch problem in this case)"
+                return f"Error: Double patch with strings range detected for {path} without read in between. This can lead to incorrect changes. Do read and then patch with strings range again. Or use patch with old_text + new_text (no double patch problem in this case)"
             patched_files[path] = True
-        elif action in ["read", "symbols"]:
+        elif action in ["read"]:
             patched_files.pop(path, None)
 
         script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -305,6 +305,48 @@ def execute_file_tool(tool_data):
 
     except Exception as e:
         return f"File Tool Error: {e!s}"
+
+
+def execute_around_tool(tool_data):
+    '''Выполняет around-поиск через around.py: контекст вокруг needle'''
+    p = tool_data.get('path')
+    n = tool_data.get('needle')
+    print(f'  > Executing Around Tool: {p} (needle: {n})')
+    try:
+        data = {
+            'path': p,
+            'needle': n,
+            'before': tool_data.get('before'),
+            'after': tool_data.get('after'),
+            'max_matches': tool_data.get('max_matches'),
+            'include': tool_data.get('include'),
+            'exclude': tool_data.get('exclude'),
+        }
+        data = {k: v for k, v in data.items() if v is not None}
+
+        if not data.get('path'):
+            return 'Error: path is required for around tool.'
+        if not data.get('needle'):
+            return 'Error: needle is required for around tool.'
+
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        around_path = os.path.join(script_dir, 'around.py')
+
+        process = subprocess.Popen(
+            [sys.executable, around_path],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding='utf-8',
+        )
+        stdout, stderr = process.communicate(input=json.dumps(data))
+        output = stdout.strip()
+        if stderr:
+            output += '\nError:\n' + stderr
+        return output
+    except Exception as e:
+        return f'Around Tool Error: {e!s}'
 
 
 def extract_json_blocks(text):
@@ -460,9 +502,13 @@ async def main_loop():
                                         "Error: Missing command for terminal tool."
                                     )
 
-                            elif tool_type == "file":
+                            elif tool_type == 'file':
                                 res = execute_file_tool(tool)
-                                result_item["result"] = res
+                                result_item['result'] = res
+
+                            elif tool_type == 'around':
+                                res = execute_around_tool(tool)
+                                result_item['result'] = res
                                 for field in ["new_text", "old_text"]:
                                     if (
                                         field in result_item

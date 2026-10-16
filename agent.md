@@ -19,7 +19,7 @@ The agent must send a message containing a JSON block. Only **one** JSON block i
     {
       "type": "file",
       "path": "path/to/file",
-      "action": "symbols|read|patch",
+      "action": "read|patch",
       "start": 1,
       "end": 100,
       "old_text": "text to find",
@@ -47,7 +47,6 @@ The agent must send a message containing a JSON block. Only **one** JSON block i
 - **type**: `file`
 - **path**: Absolute path to the file.
 - **action**:
-  - `symbols` (default): Extracts file structure (functions, classes, headers). Recommended for initial file exploration.
   - `read`: Reads file content.
   - `patch`: Modifies the file.
 
@@ -57,6 +56,48 @@ The agent must send a message containing a JSON block. Only **one** JSON block i
 - **patch (search mode)**: Requires `old_text` and `new_text`.
   - `replace_all` (bool): If `true`, replaces all occurrences of `old_text`. Defaults to `false`.
 - **patch (line mode)**: Requires `start`, `end`, and `new_text`. Replaces the specified line range. This mode is very useful when the text to be replaced is very complex and errors occur in **patch (search mode)**.
+
+### 3. AROUND Tool
+
+**Purpose:** Search for a literal string (needle) in files and output matches together with surrounding context lines. Replaces the common two-step workflow (grep for locations, then file read for context) with a single call, with a budget to keep output bounded.
+
+- **type**: `around`
+- **path**: File or directory to search. Relative paths are resolved against the executor's current working directory (the directory of the script); absolute paths are used as-is.
+- **needle**: Literal substring to search. Must be a **single line**: any needle containing a newline (leading, trailing, or inside) matches nothing. The error/empty response displays the needle with escaped `\n`, so a broken multiline needle is visible in the output.
+- **before**, **after**: Number of context lines before and after each match line (optional, default 0). Windows are clipped to file boundaries.
+- **max_matches**: Maximum number of matches to render (optional). Budget is spent per match, not per line.
+- **include**: Glob pattern to include files (e.g., `*.go`). Optional.
+- **exclude**: Glob pattern to exclude files (e.g., `*_test.go`). Optional.
+
+#### Processing Pipeline
+
+1. **Scan phase:** all surviving files are scanned fully, regardless of the budget. Budget limits rendering only, so totals in the summary are always exact. Files failing to open are counted as `unreadable files`; files containing NUL bytes are counted as `binary_skipped` and are not searched.
+2. **Merge phase:** per rendered file, per-match windows `[line-before, line+after]` are sorted and merged when overlapping or adjacent into contiguous blocks. Overlapping context lines are rendered once. Gaps between blocks are marked with `...(skipped. no needle)...`.
+3. **Render phase:** matches are rendered in file order until the budget is spent. Regular lines as `NNN|`, match lines as `NNN needle ->|`. A file cut off mid-render gets `...(truncated: max_matches reached)...`; files whose matches were not rendered at all are listed in `matches in remaining files`.
+
+#### Output Format
+
+```
+file: path/to/file
+  12|  regular context line
+  13 needle ->|  matched line
+...(skipped. no needle)...
+  50|  regular context line
+...
+---
+matches: shown N of M
+files with matches: K
+unreadable files: X        (optional)
+matches in remaining files: path1, path2   (optional)
+```
+
+Empty result: `No matches for needle '...' in K file(s) under: <path>` (with notes about skipped/unreadable files when applicable).
+
+#### Notes and Limitations
+
+- Search is literal substring, per line. No regex, no case-insensitivity flag: for case variants use several around calls with different needles in one message (small windows to avoid overlapping context), for regex use the TERMINAL tool.
+- Deduplication works only within one call and per file; windows across files and across separate calls may repeat the same lines.
+- If the budget ends exactly at a file's last match, no truncation marker is printed; honesty is guaranteed by `matches: shown N of M`.
 
 ## Output Format (out.json)
 

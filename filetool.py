@@ -3,105 +3,6 @@ import os
 import sys
 
 
-def get_symbols(path: str):
-    """
-    Вызывает ctags или парсит markdown.
-    """
-    if not os.path.exists(path):
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        b_path = os.path.join(script_dir, path)
-        if not os.path.exists(b_path):
-            return f"Error: File not found: {path}"
-        path = b_path
-
-    ext = os.path.splitext(path)[1].lower()
-
-    # === Markdown ===
-    if ext == ".md":
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                lines = f.readlines()
-
-            symbols = []
-            for i, line in enumerate(lines, 1):
-                line = line.strip()
-                if line.startswith("#"):
-                    # Считаем уровень заголовка
-                    level = 0
-                    while level < len(line) and line[level] == "#":
-                        level += 1
-                    title = line[level:].strip()
-                    if title:
-                        symbols.append(f"{i:4d} - {i:4d} | heading{level:<2} | {title}")
-
-            if not symbols:
-                return "No headings found in markdown file."
-
-            header = f"Headings in {os.path.basename(path)}:\n" + "-" * 70
-            return header + "\n" + "\n".join(symbols)
-
-        except Exception as e:
-            return f"Error parsing markdown: {str(e)}"
-
-    # === Кодовые файлы (ctags) ===
-    try:
-        import json
-        import subprocess
-
-        result = subprocess.run(
-            [
-                "ctags",
-                "--output-format=json",
-                "--fields=+n+e",
-                "--extras=+q",
-                "-f",
-                "-",
-                path,
-            ],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="ignore",
-        )
-
-        if result.returncode != 0:
-            if "not recognized" in result.stderr or result.returncode == 127:
-                return (
-                    "Error: ctags not found.\n\n"
-                    "Install: sudo snap install universal-ctags --classic or choco install universal-ctags -y"
-                )
-            return f"ctags error: {result.stderr.strip()}"
-
-        symbols = []
-        for line in result.stdout.strip().splitlines():
-            if not line.strip():
-                continue
-            try:
-                tag = json.loads(line)
-                if tag.get("_type") != "tag":
-                    continue
-
-                start = tag.get("line", "?")
-                end = tag.get("end", "?")
-                kind = tag.get("kind", "?")
-                name = tag.get("name", "?")
-
-                symbols.append(f"{start:4d} - {end:4d} | {kind:10s} | {name}")
-            except:
-                continue
-
-        if not symbols:
-            return f"No symbols found in {os.path.basename(path)}."
-
-        header = f"Symbols in {os.path.basename(path)}:\n" + "-" * 70
-        return header + "\n" + "\n".join(symbols)
-
-    except FileNotFoundError:
-        return "Error: ctags not found.\nInstall: choco install universal-ctags -y"
-    except Exception as e:
-        return f"Error: {str(e)}"
-
-
 def read_lines(path, start, end):
     if not os.path.exists(path):
         script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -119,7 +20,7 @@ def read_lines(path, start, end):
         # Добавляем номера строк — это критично!
         numbered = []
         for i, line in enumerate(selected, start=start):
-            numbered.append(f"{i:4d} | {line.rstrip()}")
+            numbered.append(f"{i:4d}|{line.rstrip()}")
 
         return "\n".join(numbered)
 
@@ -236,9 +137,6 @@ def main():
                         data.get("new_text", ""),
                     )
                 )
-        elif action == "symbols":
-            result = get_symbols(path)
-            print(result)
         else:
             print(f"Error: Unknown action '{action}'")
     except Exception as e:

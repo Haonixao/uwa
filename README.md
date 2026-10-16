@@ -10,7 +10,7 @@ It effectively gives the AI persistent, real-world execution capabilities.
 ## Features
 
 - **Terminal Execution** — Run any commands with full output capture
-- **File Operations** — Safe read/patch/symbols (with ctags and Markdown support)
+- **File Operations** — Safe read/patch
 - **Autonomous & Safe** — Continuous monitoring with Double Patch Protection
 - **Auto-injection** — Automatically pastes results back into the chat via `$UWA_INPUT` tag
 - **Chrome Integration** — Automatically finds the active tab via DevTools Protocol
@@ -48,18 +48,6 @@ It effectively gives the AI persistent, real-world execution capabilities.
 
 ```bash
 pip install websockets
-```
-
-For Windows:
-
-```bash
-choco install universal-ctags -y
-```
-
-For Linux:
-
-```bash
-sudo snap install universal-ctags --classic
 ```
 
 3. **Run the agent:**
