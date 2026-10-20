@@ -350,13 +350,18 @@ def execute_around_tool(tool_data):
 
 
 def extract_json_blocks(text):
-    """Находит все JSON-блоки, содержащие uwa_msg_id, с учетом вложенных скобок и строк"""
+    """Находит все валидные JSON-блоки, содержащие uwa_msg_id, с учетом вложенности"""
     blocks = []
-    for match in re.finditer(r'"uwa_msg_id"\s*:', text):
-        start_idx = text.rfind("{", 0, match.start())
-        if start_idx == -1:
+    # Ищем все потенциальные начала JSON-объектов
+    for match in re.finditer(r'\{', text):
+        start_idx = match.start()
+        
+        # Проверяем, есть ли uwa_msg_id внутри этого потенциального блока
+        msg_match = re.search(r'"uwa_msg_id"\s*:', text[start_idx:])
+        if not msg_match:
             continue
-
+        
+        # Пытаемся извлечь сбалансированный блок, начиная с этой '{'
         brace_count = 0
         in_string = False
         escaped = False
@@ -389,7 +394,16 @@ def extract_json_blocks(text):
                     break
 
         if end_idx != -1:
-            blocks.append(text[start_idx:end_idx])
+            candidate = text[start_idx:end_idx]
+            # Финальная валидация: очистка от скрытых символов и попытка парсинга
+            clean_candidate = re.sub(r"[\u200b-\u200d\ufeff\u2028\u2029]", "", candidate)
+            try:
+                data = json.loads(clean_candidate)
+                if "uwa_msg_id" in data:
+                    blocks.append(candidate) # Возвращаем оригинал, очистка будет в main_loop
+            except json.JSONDecodeError:
+                continue
+                
     return blocks
 
 
