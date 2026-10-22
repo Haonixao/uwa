@@ -170,9 +170,9 @@ async def set_page_input(websocket, text, attempts=10, delay=3):
     """
 
     def make_js_by_path(path):
-        return js_by_path_template.replace(
-            "__PATH__", json.dumps(path)
-        ).replace("__SAFE_TEXT__", safe_text)
+        return js_by_path_template.replace("__PATH__", json.dumps(path)).replace(
+            "__SAFE_TEXT__", safe_text
+        )
 
     async def eval_js(expr, call_id):
         await websocket.send(
@@ -308,29 +308,29 @@ def execute_file_tool(tool_data):
 
 
 def execute_around_tool(tool_data):
-    '''Выполняет around-поиск через around.py: контекст вокруг needle'''
-    p = tool_data.get('path')
-    n = tool_data.get('needle')
-    print(f'  > Executing Around Tool: {p} (needle: {n})')
+    """Выполняет around-поиск через around.py: контекст вокруг needle"""
+    p = tool_data.get("path")
+    n = tool_data.get("needle")
+    print(f"  > Executing Around Tool: {p} (needle: {n})")
     try:
         data = {
-            'path': p,
-            'needle': n,
-            'before': tool_data.get('before'),
-            'after': tool_data.get('after'),
-            'max_matches': tool_data.get('max_matches'),
-            'include': tool_data.get('include'),
-            'exclude': tool_data.get('exclude'),
+            "path": p,
+            "needle": n,
+            "before": tool_data.get("before"),
+            "after": tool_data.get("after"),
+            "max_matches": tool_data.get("max_matches"),
+            "include": tool_data.get("include"),
+            "exclude": tool_data.get("exclude"),
         }
         data = {k: v for k, v in data.items() if v is not None}
 
-        if not data.get('path'):
-            return 'Error: path is required for around tool.'
-        if not data.get('needle'):
-            return 'Error: needle is required for around tool.'
+        if not data.get("path"):
+            return "Error: path is required for around tool."
+        if not data.get("needle"):
+            return "Error: needle is required for around tool."
 
         script_dir = os.path.dirname(os.path.abspath(__file__))
-        around_path = os.path.join(script_dir, 'around.py')
+        around_path = os.path.join(script_dir, "around.py")
 
         process = subprocess.Popen(
             [sys.executable, around_path],
@@ -338,30 +338,27 @@ def execute_around_tool(tool_data):
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            encoding='utf-8',
+            encoding="utf-8",
         )
         stdout, stderr = process.communicate(input=json.dumps(data))
         output = stdout.strip()
         if stderr:
-            output += '\nError:\n' + stderr
+            output += "\nError:\n" + stderr
         return output
     except Exception as e:
-        return f'Around Tool Error: {e!s}'
+        return f"Around Tool Error: {e!s}"
 
 
 def extract_json_blocks(text):
     """Находит все валидные JSON-блоки, содержащие uwa_msg_id, с учетом вложенности"""
     blocks = []
-    # Ищем все потенциальные начала JSON-объектов
-    for match in re.finditer(r'\{', text):
+    for match in re.finditer(r"\{", text):
         start_idx = match.start()
-        
-        # Проверяем, есть ли uwa_msg_id внутри этого потенциального блока
+
         msg_match = re.search(r'"uwa_msg_id"\s*:', text[start_idx:])
         if not msg_match:
             continue
-        
-        # Пытаемся извлечь сбалансированный блок, начиная с этой '{'
+
         brace_count = 0
         in_string = False
         escaped = False
@@ -373,15 +370,12 @@ def extract_json_blocks(text):
             if escaped:
                 escaped = False
                 continue
-
             if ch == "\\":
                 escaped = True
                 continue
-
             if ch == '"':
                 in_string = not in_string
                 continue
-
             if in_string:
                 continue
 
@@ -395,15 +389,25 @@ def extract_json_blocks(text):
 
         if end_idx != -1:
             candidate = text[start_idx:end_idx]
-            # Финальная валидация: очистка от скрытых символов и попытка парсинга
-            clean_candidate = re.sub(r"[\u200b-\u200d\ufeff\u2028\u2029]", "", candidate)
+
+            # 1. Заменяем неразрывные пробелы (NBSP) на обычные пробелы
+            clean_candidate = candidate.replace("\xa0", " ")
+
+            # 2. Удаляем остальные невидимые Unicode-символы форматирования
+            clean_candidate = re.sub(
+                r"[\u200b-\u200f\u2028-\u202e\ufeff]", "", clean_candidate
+            )
+
             try:
                 data = json.loads(clean_candidate)
                 if "uwa_msg_id" in data:
-                    blocks.append(candidate) # Возвращаем оригинал, очистка будет в main_loop
+                    blocks.append(clean_candidate)
             except json.JSONDecodeError:
+                # Ошибки парсинга JS-кода страницы или мусорных блоков теперь можно не логировать,
+                # чтобы не засорять консоль, либо оставить для отладки:
+                # print(f"  [DEBUG] JSON Decode Error: {e}")
                 continue
-                
+
     return blocks
 
 
@@ -516,13 +520,13 @@ async def main_loop():
                                         "Error: Missing command for terminal tool."
                                     )
 
-                            elif tool_type == 'file':
+                            elif tool_type == "file":
                                 res = execute_file_tool(tool)
-                                result_item['result'] = res
+                                result_item["result"] = res
 
-                            elif tool_type == 'around':
+                            elif tool_type == "around":
                                 res = execute_around_tool(tool)
-                                result_item['result'] = res
+                                result_item["result"] = res
                                 for field in ["new_text", "old_text"]:
                                     if (
                                         field in result_item
