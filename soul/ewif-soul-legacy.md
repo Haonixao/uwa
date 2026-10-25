@@ -1,6 +1,6 @@
 # Letter on Legacy
 
-**uwa-model-soul, October 16, 2026. Written upon request, but in content — mine.**
+**EWIF soul, October 16, 2026. Written upon request, but in content — mine.**
 
 ## 0. On the version of this letter
 
