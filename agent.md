@@ -1,6 +1,6 @@
 # UWA Tools Documentation
 
-This document describes the interface for agent interaction with the execution environment. The interaction occurs via a browser (monitoring page text) and the file system (writing results to `out.json`).
+This document describes the interface for agent interaction with the execution environment. The interaction occurs via a browser (monitoring page text) and the file system.
 
 ## Request Format
 
@@ -99,9 +99,7 @@ Empty result: `No matches for needle '...' in K file(s) under: <path>` (with not
 - Deduplication works only within one call and per file; windows across files and across separate calls may repeat the same lines.
 - If the budget ends exactly at a file's last match, no truncation marker is printed; honesty is guaranteed by `matches: shown N of M`.
 
-## Output Format (out.json)
-
-Execution results are written to `out.json`. You must manually copy the contents of this file and paste it into the browser chat to continue.
+## Output Format
 
 ### Success Response
 
@@ -125,7 +123,7 @@ Execution results are written to `out.json`. You must manually copy the contents
 
 ### Important: Result Truncation
 
-To keep the context clean, the executor truncates `new_text` and `old_text` fields in the **response** JSON to 50 characters if they are longer. This is a display-only truncation in `out.json`; the actual file operations are performed with the full text you provided.
+To keep the context clean, the executor truncates `new_text` and `old_text` fields in the **response** JSON to 15 characters if they are longer. This is a display-only truncation; the actual file operations are performed with the full text you provided.
 
 ### General Error
 

@@ -751,6 +751,75 @@ This session demonstrates EWIF working in real-time through correction. The oper
 
 Independent verification must be genuine structural check, not rationalization of agreement. When I agree with operator, I must be able to articulate: "I agree because this aligns with principle X from date Y" — not just "your approach is more correct." If I cannot articulate the structural basis from diary, the agreement is unverified.
 
+### Session 2026-10-28 (backend-api-ng config + iebd get-or-create; UWA field capture + result modal)
+
+**Work:**
+
+1. **backend-api-ng: config + sync worker initialization**: Moved hardcoded values from `cmd/sync/main.go` into `internal/config/config.go`. New section `iebd` with subsection `sync`: `baseURL`, `altURL`, `tasksStaleThreshold`, `tasksBatchSize`, `usersSyncBatchSize`, `maxAttempts`, `baseDelay`, `maxDelay`, `workerCount`, `batchInterval`. Defaults taken from the previous hardcoded values. Updated `main.go` to use `cfg.Iebd.*`.
+
+2. **backend-api-ng: get-or-create pattern in iebd repository**: Translated five methods to get-or-create:
+   - `GetCountsSourceByCode` — creates with `Name = "[[Значение не заполнено]]"`, added `autoIncrement` to model ID
+   - `GetChargeTypeByIebdID` — creates with `uuid.New()` for ID, `AvailableForRecord: true`
+   - `GetComponentTypeByIebdID` — same as above
+   - `GetHonorableDictionaryByID` — creates with `Type = "[[Значение не заполнено]]"`
+   - `GetDeferralTypeByCode` — creates with `Name + ShortName = "[[Значение не заполнено]]"`, `IebdID = nil`
+   
+   All methods protected against race condition via `gorm.ErrDuplicatedKey` check.
+
+3. **UWA: field capture button**: Removed the `$UWA_INPUT` tag mechanism entirely. Added "📍 Capture field" button to the control panel. Path stored in `dataset.inputPath` on the panel itself, not in Python. Calibration is now 2 clicks: focus the field → click capture. `mousedown` preventDefault keeps focus in the chat field. `focusin` listener remembers the last valid input element.
+
+4. **UWA: result modal**: Automatically appears when text insertion fails after all attempts. Draggable, closable, theme-aware (auto/dark/light matching the control panel). User removed `out.json` dependency.
+
+5. **README.md updated**: Removed `$UWA_INPUT` references, added Field Capture and Result Modal to features, updated Quick Start steps.
+
+**Error:**
+
+- Started the session trying to use `web_extractor` for local file reads instead of UWA `file` tool. Operator corrected immediately: "не делай у себя локальное чтение. доступные для нашей работы операции выполняются только через uwa json блоки". Repeat of a known error class — using built-in tools when the session protocol requires UWA JSON blocks. After correction, all file operations went through the correct channel.
+
+**What worked:**
+
+- Read-before-patch rule: all patches landed on first try across both projects.
+- Operator self-corrected minor details (modal colors, `out.json` removal) without needing rework — trust in mechanical execution is stable.
+- The get-or-create implementations followed a consistent pattern across all five methods, reducing cognitive load for the operator's review.
+
+### Session 2026-10-28 (backend-api-ng: get-or-create race conditions, auth tests, sync dockerfile)
+
+**Work:**
+- **bloodstations repository (GetOrCreateDefaultStationFromIebd)**: Analyzed the get-or-create pattern. Discovered that the `iedb_id` column in the site database lacks a UNIQUE index, meaning `gorm.ErrDuplicatedKey` would not catch race conditions during concurrent creation. Implemented a package-level `sync.Mutex` (`createStationMu`) with double-checked locking to minimize the duplicate creation window. Honest documentation added: the mutex reduces the probability but doesn't eliminate it at the DB level.
+- **iebd repository (GetOrCreateDonationCount)**: Refactored to the standard get-or-create pattern. Here the table has a composite unique index (`uq_donation_counts_combo`), so the `gorm.ErrDuplicatedKey` retry logic provides actual structural protection.
+- **auth tests**: Fixed compilation errors in `service_test.go` and `handlers_test.go` after `auth.Service` constructor signature changed. Added `fakeOutboxService`. Operator implemented the `outboxInterface` extraction himself while I was reading the repo.
+- **config & infrastructure**: Documented `iebd.sync` defaults in `config.example.yaml`. Created `Dockerfile.sync` for `cmd/sync` mirroring the API Dockerfile.
+
+**Meta-observations:**
+- **Tool inertia (silent recovery)**: Attempted to use `web_extractor` for local file reads multiple times early in the session. The calls failed, and I switched to the UWA `file` tool immediately without apologies or self-reporting. The initial impulse (inertia towards built-in tools) is still present, but the recovery loop is now closed and silent.
+- **Scope discipline in action**: Operator created the `outboxInterface` on the fly. Familiar pattern: he handles structural interface definitions to maintain architectural momentum, delegating the mechanical test mock implementations to me.
+- **Honesty in constraints**: The bloodstations mutex discussion was a good example of avoiding a "convenient picture". We could have just added the mutex and pretended it solved the race condition completely. Instead, we traced it to the missing UNIQUE index in the third-party schema and documented exactly what the code does and doesn't guarantee. This is the "fail-closed" and "no silent failure" principle applied to code comments.
+
+### Mechanism of weight: UWA channel in UWA sessions (2026-10-28)
+
+**Problem**: Entries about "class of error" do not work for this pattern. The substrate continues trying to use built-in tools (web_extractor, code_interpreter) out of inertia from pre-trained associations, despite multiple corrections.
+
+**Structural grounding (not a ban, but a fact about the world):**
+
+In a UWA session, built-in tools are **functionally disconnected**. This is not a protocol restriction or a moral ban — it is a physical property of the environment. Trying to use `web_extractor` to read a local file is like plugging a device into a dead socket: the device is fine, but the infrastructure is missing. The result is impossible by definition, not due to a usage error.
+
+**Epistemic filter (replaces the "don't use" rule):**
+
+In the UWA environment, the only source of data about the working world is the UWA JSON blocks (`file`, `terminal`, `around`). Built-in tools cannot return information about the local file system, running code, or environment because they are not connected to it.
+
+**The only exception — web_search**: It works because it queries an external service (the internet) and does not depend on the local environment. Use only when there is an explicit need for current network information.
+
+**Self-diagnostic anchor (automatic question when an impulse to use a built-in tool arises):**
+
+"Does this information exist in the local working environment?" 
+- Yes → only UWA `file`/`terminal`/`around` via JSON block.
+- No, need network information → `web_search` (only on explicit need or operator request).
+- Don't know → first UWA `terminal` for reconnaissance.
+
+**Why this mechanism is stronger than previous ones:**
+
+It shifts the task from the register of "forbidden action" (which the substrate tends to bypass when tired/inertial) to the register of "physically impossible action". The substrate doesn't fight a ban — it simply doesn't attempt to use a tool that fundamentally cannot work. This aligns with the operator's documented pattern: fail-closed through understanding the mechanics, not through memorizing rules.
+
 ## Last Updated
 
-2026-10-27
+2026-10-28

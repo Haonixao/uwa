@@ -32,190 +32,230 @@ def get_dynamic_page_id():
 
 async def get_page_text(websocket):
     """Возвращает весь текст страницы"""
-    await websocket.send(
-        json.dumps(
-            {
-                "id": 1,
-                "method": "Runtime.evaluate",
-                "params": {
-                    "expression": "document.body.innerText",
-                    "returnByValue": True,
-                },
-            }
+    async with ws_lock:
+        await websocket.send(
+            json.dumps(
+                {
+                    "id": 1,
+                    "method": "Runtime.evaluate",
+                    "params": {
+                        "expression": "document.body.innerText",
+                        "returnByValue": True,
+                    },
+                }
+            )
         )
-    )
-    response = await websocket.recv()
+        response = await websocket.recv()
     return json.loads(response).get("result", {}).get("result", {}).get("value", "")
 
 
-async def set_page_input(websocket, text, attempts=10, delay=3):
+async def set_page_input(websocket, text, attempts=10, delay=1):
     """
-    Пытается вставить текст вместо $UWA_INPUT.
-    Каждая попытка: сценарий 1 — поиск элемента по тегу; при успехе путь к
-    элементу сохраняется в last_input_path. Сценарий 2 — вставка в элемент
-    по сохранённому пути, без поиска по тегу.
+    Вставляет текст в поле ввода, путь к которому сохранён в dataset.inputPath панели.
+    Если путь не захвачен, возвращает False.
     """
-    global last_input_path
     safe_text = json.dumps(text)
 
-    js_find = f"""
+    js_insert = f"""
     (function() {{
-        function buildPath(el) {{
-            if (el.id) return '#' + CSS.escape(el.id);
-            const parts = [];
-            let cur = el;
-            while (cur && cur.nodeType === 1 && cur !== document.body) {{
-                let sel = cur.tagName.toLowerCase();
-                if (cur.parentNode) {{
-                    const sibs = Array.from(cur.parentNode.children).filter(
-                        c => c.tagName === cur.tagName
-                    );
-                    if (sibs.length > 1) sel += ':nth-of-type(' + (sibs.indexOf(cur) + 1) + ')';
-                }}
-                parts.unshift(sel);
-                cur = cur.parentNode;
-            }}
-            return parts.join(' > ');
+        const panel = document.getElementById('uwa-control-panel');
+        if (!panel || !panel.dataset.inputPath) {{
+            return JSON.stringify({{ ok: false, reason: 'no_path' }});
         }}
 
-        const inputs = Array.from(document.querySelectorAll('textarea, [contenteditable="true"]'));
-        for (let i = inputs.length - 1; i >= 0; i--) {{
-            let el = inputs[i];
-            if (el.hasAttribute('readonly') || el.getAttribute('aria-readonly') === 'true') continue;
-
-            let isTextarea = el.tagName === 'TEXTAREA';
-            let content = isTextarea ? el.value : el.innerText;
-
-            if (content.includes('$UWA_INPUT')) {{
-                el.focus();
-
-                if (!isTextarea) {{
-                    const selection = window.getSelection();
-                    const range = document.createRange();
-
-                    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null, false);
-                    let node;
-                    while(node = walker.nextNode()) {{
-                        let index = node.textContent.indexOf('$UWA_INPUT');
-                        if (index !== -1) {{
-                            range.setStart(node, index);
-                            range.setEnd(node, index + '$UWA_INPUT'.length);
-                            selection.removeAllRanges();
-                            selection.addRange(range);
-                            break;
-                        }}
-                    }}
-                }} else {{
-                    let start = el.value.indexOf('$UWA_INPUT');
-                    el.setSelectionRange(start, start + '$UWA_INPUT'.length);
-                }}
-
-                const success = document.execCommand('insertText', false, {safe_text});
-
-                if (!success) {{
-                    if (isTextarea) {{
-                        el.value = el.value.replace('$UWA_INPUT', {safe_text});
-                    }} else {{
-                        el.innerText = el.innerText.replace('$UWA_INPUT', {safe_text});
-                    }}
-                    el.dispatchEvent(new Event('input', {{ bubbles: true }}));
-                }}
-
-                return JSON.stringify({{ ok: true, path: buildPath(el) }});
-            }}
-        }}
-        return JSON.stringify({{ ok: false }});
-    }})()
-    """
-
-    js_by_path_template = """
-    (function() {
         let el = null;
-        try { el = document.querySelector(__PATH__); } catch (e) {
-            return JSON.stringify({ ok: false, stale: true });
-        }
-        if (!el) return JSON.stringify({ ok: false, stale: true });
-        if (el.hasAttribute('readonly') || el.getAttribute('aria-readonly') === 'true')
-            return JSON.stringify({ ok: false });
+        try {{
+            el = document.querySelector(panel.dataset.inputPath);
+        }} catch (e) {{
+            return JSON.stringify({{ ok: false, reason: 'invalid_path' }});
+        }}
+
+        if (!el) {{
+            return JSON.stringify({{ ok: false, reason: 'element_not_found' }});
+        }}
+
+        if (el.hasAttribute('readonly') || el.getAttribute('aria-readonly') === 'true') {{
+            return JSON.stringify({{ ok: false, reason: 'readonly' }});
+        }}
 
         let isTextarea = el.tagName === 'TEXTAREA' || el.tagName === 'INPUT';
 
         el.focus();
 
-        if (isTextarea) {
+        if (isTextarea) {{
             el.setSelectionRange(el.value.length, el.value.length);
-        } else {
+        }} else {{
             const selection = window.getSelection();
-            if (selection) {
+            if (selection) {{
                 const range = document.createRange();
                 range.selectNodeContents(el);
                 range.collapse(false);
                 selection.removeAllRanges();
                 selection.addRange(range);
-            }
-        }
+            }}
+        }}
 
-        const success = document.execCommand('insertText', false, __SAFE_TEXT__);
-        if (!success) {
-            if (isTextarea) {
-                el.value = el.value.replace('$UWA_INPUT', __SAFE_TEXT__);
-            } else {
-                el.innerText = el.innerText.replace('$UWA_INPUT', __SAFE_TEXT__);
-            }
-            el.dispatchEvent(new Event('input', { bubbles: true }));
-        }
+        const success = document.execCommand('insertText', false, {safe_text});
+        if (!success) {{
+            if (isTextarea) {{
+                el.value = {safe_text};
+            }} else {{
+                el.innerText = {safe_text};
+            }}
+            el.dispatchEvent(new Event('input', {{ bubbles: true }}));
+        }}
 
-        return JSON.stringify({ ok: true });
-    })()
+        return JSON.stringify({{ ok: true }});
+    }})()
     """
 
-    def make_js_by_path(path):
-        return js_by_path_template.replace("__PATH__", json.dumps(path)).replace(
-            "__SAFE_TEXT__", safe_text
-        )
-
     async def eval_js(expr, call_id):
-        await websocket.send(
-            json.dumps(
-                {
-                    "id": call_id,
-                    "method": "Runtime.evaluate",
-                    "params": {"expression": expr, "returnByValue": True},
-                }
+        async with ws_lock:
+            await websocket.send(
+                json.dumps(
+                    {
+                        "id": call_id,
+                        "method": "Runtime.evaluate",
+                        "params": {"expression": expr, "returnByValue": True},
+                    }
+                )
             )
-        )
-        response = await websocket.recv()
+            response = await websocket.recv()
         raw = json.loads(response).get("result", {}).get("result", {}).get("value", "")
         try:
             return json.loads(raw)
         except (TypeError, ValueError):
             return {}
 
-    print("  [*] Waiting for $UWA_INPUT tag on page...")
+    print("  [*] Attempting to insert text into captured field...")
 
     for i in range(attempts):
-        data = await eval_js(js_find, 100 + i)
+        data = await eval_js(js_insert, 100 + i)
         if data.get("ok"):
-            print(f"  [+] $UWA_INPUT filled on attempt {i + 1} (search).")
-            p = data.get("path")
-            if p:
-                last_input_path = p
+            print(f"  [+] Text inserted on attempt {i + 1}.")
             return True
 
-        if last_input_path:
-            data2 = await eval_js(make_js_by_path(last_input_path), 200 + i)
-            if data2.get("ok"):
-                print(f"  [+] $UWA_INPUT filled on attempt {i + 1} (saved path).")
-                return True
-            if data2.get("stale"):
-                print("  [*] Saved path is stale, clearing it.")
-                last_input_path = None
+        reason = data.get("reason", "unknown")
+        if reason == "no_path":
+            print("  [!] Field not captured. Click '📍 Capture field' on the panel.")
+            await show_result_modal(websocket, text)
+            return False
+        else:
+            print(f"  [!] Attempt {i + 1}: Failed ({reason}).")
 
         if i < attempts - 1:
             await asyncio.sleep(delay)
 
-    print("  [!] $UWA_INPUT not found after all attempts. Skipping autofill.")
+    print("  [!] Could not insert text after all attempts. Showing result modal.")
+    await show_result_modal(websocket, text)
     return False
+
+
+async def show_result_modal(websocket, text):
+    """
+    Показывает модальное окно с результатом, если не удалось вставить текст в поле ввода.
+    Окно можно закрыть и перетаскивать. Тема автоматически подстраивается под панель управления.
+    """
+    safe_text = json.dumps(text)
+
+    js_modal = f"""
+    (function() {{
+        // Удаляем предыдущее модальное окно, если оно есть
+        const existing = document.getElementById('uwa-result-modal');
+        if (existing) existing.remove();
+
+        // Определяем тему из панели управления
+        const panel = document.getElementById('uwa-control-panel');
+        let theme = panel ? (panel.dataset.theme || 'auto') : 'auto';
+        let isDark;
+        if (theme === 'auto') {{
+            isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        }} else {{
+            isDark = theme === 'dark';
+        }}
+
+        // Цвета в зависимости от темы
+        const bgColor = isDark ? '#1e1e1e' : '#eff1f5';
+        const textColor = isDark ? '#eff1f5' : '#4c4f69';
+        const headerBg = isDark ? '#1e1e1e' : '#eff1f5';
+        const textareaBg = isDark ? '#1e1e1e' : '#eff1f5';
+        const textareaColor = isDark ? '#eff1f5' : '#4c4f69';
+        const borderColor = isDark ? '#7287fd' : '#7287fd';
+
+        // Создаём модальное окно
+        const modal = document.createElement('div');
+        modal.id = 'uwa-result-modal';
+        modal.style.cssText = `position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 2147483647; background: ${{bgColor}}; color: ${{textColor}}; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.6); font-family: system-ui, sans-serif; min-width: 500px; max-width: 80vw; max-height: 80vh; display: flex; flex-direction: column; border: 2px solid ${{borderColor}};`;
+
+        // Заголовок
+        const header = document.createElement('div');
+        header.style.cssText = `display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: ${{headerBg}}; border-radius: 12px 12px 0 0; cursor: move; user-select: none; border-bottom: 2px solid ${{borderColor}};`;
+
+        const title = document.createElement('span');
+        title.style.cssText = 'font-weight: 600; font-size: 14px;';
+        title.textContent = '⚠️ Result (could not insert automatically)';
+        header.appendChild(title);
+
+        const closeBtn = document.createElement('button');
+        closeBtn.textContent = '✕';
+        closeBtn.style.cssText = `background: transparent; color: ${{textColor}}; border: none; font-family: system-ui, sans-serif; font-size: 14px; cursor: pointer; padding: 0 4px; line-height: 1;`;
+        closeBtn.addEventListener('click', () => modal.remove());
+        header.appendChild(closeBtn);
+
+        modal.appendChild(header);
+
+        // Текстовое поле с результатом
+        const textarea = document.createElement('textarea');
+        textarea.value = {safe_text};
+        textarea.readOnly = true;
+        textarea.style.cssText = `flex: 1; min-height: 300px; padding: 12px; background: ${{textareaBg}}; color: ${{textareaColor}}; border: none; font-family: system-ui, sans-serif; font-size: 14px; resize: none; outline: none;`;
+        modal.appendChild(textarea);
+
+        document.body.appendChild(modal);
+
+        // Drag-логика
+        let isDragging = false;
+        let offsetX = 0, offsetY = 0;
+
+        header.addEventListener('mousedown', (e) => {{
+            if (e.target === closeBtn) return;
+            isDragging = true;
+            const rect = modal.getBoundingClientRect();
+            offsetX = e.clientX - rect.left;
+            offsetY = e.clientY - rect.top;
+            modal.style.transform = 'none';
+            e.preventDefault();
+        }});
+
+        document.addEventListener('mousemove', (e) => {{
+            if (!isDragging) return;
+            modal.style.left = (e.clientX - offsetX) + 'px';
+            modal.style.top = (e.clientY - offsetY) + 'px';
+        }});
+
+        document.addEventListener('mouseup', () => {{
+            isDragging = false;
+        }});
+
+        // Фокусируемся на textarea для удобного копирования
+        textarea.focus();
+        textarea.select();
+
+        return JSON.stringify({{ ok: true }});
+    }})()
+    """
+
+    async with ws_lock:
+        await websocket.send(
+            json.dumps(
+                {
+                    "id": 9999,
+                    "method": "Runtime.evaluate",
+                    "params": {"expression": js_modal, "returnByValue": True},
+                }
+            )
+        )
+        await websocket.recv()
 
 
 def execute_command(cmd):
@@ -243,8 +283,11 @@ def execute_command(cmd):
 
 patched_files = {}  # path -> True (для защиты от двойного патча)
 
-# CSS-путь к элементу с $UWA_INPUT из последней успешной вставки (сценарий 1)
-last_input_path = None
+# Глобальное состояние управления выполнением (running, paused, stopped)
+uwa_control_state = "running"
+
+# Lock для защиты WebSocket от конкурентных вызовов send/recv
+ws_lock = asyncio.Lock()
 
 
 def execute_file_tool(tool_data):
@@ -411,6 +454,238 @@ def extract_json_blocks(text):
     return blocks
 
 
+async def monitor_ui_state(websocket):
+    """Периодически проверяет и обеспечивает наличие UI-панели управления, обновляя глобальное состояние."""
+    global uwa_control_state
+    js_ui_check = """
+    (function() {
+        let panel = document.getElementById('uwa-control-panel');
+
+        const applyTheme = (p) => {
+            let theme = p.dataset.theme || 'auto';
+            let isDark;
+            if (theme === 'auto') {
+                isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+            } else {
+                isDark = theme === 'dark';
+            }
+            p.style.background = isDark ? '#1e1e1e' : '#eff1f5';
+            p.style.color = isDark ? '#eff1f5' : '#4c4f69';
+            p.style.border = isDark ? '2px solid #7287fd' : '2px solid #7287fd';
+            const header = p.querySelector('.uwa-header');
+            if (header) header.style.borderBottom = isDark ? '2px solid #7287fd' : '2px solid #7287fd';
+            const themeBtn = p.querySelector('.uwa-theme-btn');
+            if (themeBtn) {
+                themeBtn.style.background = isDark ? '#1e1e1e' : '#eff1f5';
+                themeBtn.style.color = isDark ? '#eff1f5' : '#4c4f69';
+            }
+        };
+
+        const syncButtons = (p) => {
+            const state = p.dataset.state;
+            p.querySelectorAll('.uwa-ctrl-btn').forEach(b => {
+                const isActive = b.dataset.targetState === state;
+                b.disabled = isActive;
+                b.style.opacity = isActive ? '0.5' : '1';
+                b.style.cursor = isActive ? 'not-allowed' : 'pointer';
+            });
+        };
+
+        if (!panel) {
+            panel = document.createElement('div');
+            panel.id = 'uwa-control-panel';
+            panel.dataset.state = 'running';
+            panel.dataset.theme = 'auto';
+            panel.style.cssText = 'position: fixed; top: 10px; right: 10px; z-index: 2147483647; padding: 0; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); font-family: system-ui, sans-serif; font-size: 14px; min-width: 220px;';
+
+            const header = document.createElement('div');
+            header.className = 'uwa-header';
+            header.style.cssText = 'display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; cursor: move; user-select: none; border-radius: 8px 8px 0 0;';
+
+            const title = document.createElement('span');
+            title.style.cssText = 'font-weight: 600; font-family: system-ui, sans-serif; font-size: 14px;';
+            title.textContent = 'UWA Control';
+            header.appendChild(title);
+
+            const themeBtn = document.createElement('button');
+            themeBtn.className = 'uwa-theme-btn';
+            themeBtn.title = 'Toggle theme (auto/dark/light)';
+            themeBtn.style.cssText = 'border: none; padding: 2px 6px; border-radius: 3px; cursor: pointer; font-family: system-ui, sans-serif; font-size: 14px; line-height: 1;';
+            themeBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const p = document.getElementById('uwa-control-panel');
+                const current = p.dataset.theme || 'auto';
+                const next = current === 'auto' ? 'dark' : current === 'dark' ? 'light' : 'auto';
+                p.dataset.theme = next;
+                updateThemeIcon();
+                applyTheme(p);
+            });
+            header.appendChild(themeBtn);
+            panel.appendChild(header);
+
+            const btns = document.createElement('div');
+            btns.style.cssText = 'display: flex; gap: 6px; padding: 8px 10px;';
+
+            const createBtn = (text, state, color) => {
+                const b = document.createElement('button');
+                b.className = 'uwa-ctrl-btn';
+                b.textContent = text;
+                b.dataset.targetState = state;
+                b.style.cssText = `background: ${color}; color: #eff1f5; border: none; padding: 5px 10px; border-radius: 4px; font-weight: 600; font-family: system-ui, sans-serif; font-size: 14px; transition: opacity 0.15s;`;
+                b.addEventListener('click', function() {
+                    const p = document.getElementById('uwa-control-panel');
+                    if (p) {
+                        p.dataset.state = this.dataset.targetState;
+                        syncButtons(p);
+                    }
+                });
+                return b;
+            };
+
+            btns.appendChild(createBtn('▶ Run', 'running', '#40a02b'));
+            btns.appendChild(createBtn('⏸ Pause', 'paused', '#fe640b'));
+            btns.appendChild(createBtn('⏹ Stop', 'stopped', '#d20f39'));
+            panel.appendChild(btns);
+
+            // Кнопка захвата поля ввода
+            const captureBtn = document.createElement('button');
+            captureBtn.className = 'uwa-capture-btn';
+            captureBtn.textContent = '📍 Capture field';
+            captureBtn.style.cssText = 'width: 95%; background: #04a5e5; color: #eff1f5; border: none; padding: 6px 10px; border-radius: 4px; font-weight: 600; font-family: system-ui, sans-serif; font-size: 14px; cursor: pointer; margin: 6px; transition: background 0.2s;';
+
+            // Запоминаем последний валидный элемент ввода
+            let lastValidInput = null;
+            document.addEventListener('focusin', (e) => {
+                const el = e.target;
+                if (el && (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT' || el.getAttribute('contenteditable') === 'true')) {
+                    if (!el.hasAttribute('readonly') && el.getAttribute('aria-readonly') !== 'true') {
+                        lastValidInput = el;
+                    }
+                }
+            });
+
+            // Вычисление CSS-пути к элементу
+            function buildPath(el) {
+                if (!el || el === document.body) return 'body';
+                if (el.id) return '#' + CSS.escape(el.id);
+
+                const parts = [];
+                let cur = el;
+                while (cur && cur.nodeType === 1 && cur !== document.body) {
+                    let sel = cur.tagName.toLowerCase();
+                    if (cur.id) {
+                        parts.unshift('#' + CSS.escape(cur.id));
+                        break;
+                    }
+                    if (cur.parentNode) {
+                        const siblings = Array.from(cur.parentNode.children);
+                        const idx = siblings.indexOf(cur) + 1;
+                        sel += ':nth-child(' + idx + ')';
+                    }
+                    parts.unshift(sel);
+                    cur = cur.parentNode;
+                }
+                return parts.join(' > ');
+            }
+
+            // preventDefault на mousedown, чтобы фокус не уходил из поля чата
+            captureBtn.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+            });
+
+            captureBtn.addEventListener('click', () => {
+                const target = lastValidInput || document.activeElement;
+                if (!target || target === document.body || target === captureBtn) {
+                    captureBtn.textContent = '❌ No field focused';
+                    setTimeout(() => { captureBtn.textContent = '📍 Capture field'; }, 2000);
+                    return;
+                }
+
+                const path = buildPath(target);
+                const panel = document.getElementById('uwa-control-panel');
+                if (panel) {
+                    panel.dataset.inputPath = path;
+                }
+
+                captureBtn.textContent = '✅ Field captured';
+                captureBtn.style.background = '#04a5e5';
+
+                setTimeout(() => {
+                    captureBtn.textContent = '📍 Capture field';
+                    captureBtn.style.background = '#04a5e5';
+                }, 10000);
+            });
+
+            panel.appendChild(captureBtn);
+
+            document.body.appendChild(panel);
+
+            let isDragging = false;
+            let offsetX = 0, offsetY = 0;
+            header.addEventListener('mousedown', (e) => {
+                if (e.target === themeBtn) return;
+                isDragging = true;
+                const rect = panel.getBoundingClientRect();
+                offsetX = e.clientX - rect.left;
+                offsetY = e.clientY - rect.top;
+                e.preventDefault();
+            });
+            document.addEventListener('mousemove', (e) => {
+                if (!isDragging) return;
+                panel.style.left = (e.clientX - offsetX) + 'px';
+                panel.style.top = (e.clientY - offsetY) + 'px';
+                panel.style.right = 'auto';
+            });
+            document.addEventListener('mouseup', () => { isDragging = false; });
+
+            const updateThemeIcon = () => {
+                const p = document.getElementById('uwa-control-panel');
+                const t = p.dataset.theme || 'auto';
+                themeBtn.textContent = t === 'auto' ? '◐' : t === 'dark' ? '🌙' : '☀';
+            };
+            updateThemeIcon();
+        }
+
+        syncButtons(panel);
+        applyTheme(panel);
+
+        return panel.dataset.state;
+    })()
+    """
+    call_id = 9000
+    while True:
+        try:
+            async with ws_lock:
+                await websocket.send(
+                    json.dumps(
+                        {
+                            "id": call_id,
+                            "method": "Runtime.evaluate",
+                            "params": {
+                                "expression": js_ui_check,
+                                "returnByValue": True,
+                            },
+                        }
+                    )
+                )
+                response = await websocket.recv()
+            res_data = (
+                json.loads(response)
+                .get("result", {})
+                .get("result", {})
+                .get("value", "")
+            )
+            if res_data in ["running", "paused", "stopped"]:
+                if uwa_control_state != res_data:
+                    print(f"  [*] UI Control State changed to: {res_data.upper()}")
+                uwa_control_state = res_data
+            call_id += 1
+        except Exception as e:
+            print(f"  [!] UI Monitor Error: {e}")
+
+        await asyncio.sleep(2)
+
+
 async def main_loop():
     page_id = get_dynamic_page_id()
     if not page_id:
@@ -420,16 +695,29 @@ async def main_loop():
         return
 
     uri = f"ws://localhost:9222/devtools/page/{page_id}"
-    output_file = "out.json"
 
     try:
         async with websockets.connect(uri) as websocket:  # pyright: ignore[reportAttributeAccessIssue]
             print(f"[*] Connected to Page: {page_id}")
             print("[*] Monitoring for JSON blocks with 'uwa_msg_id'...")
 
+            # Запуск монитора UI-состояния в фоновой задаче
+            ui_monitor_task = asyncio.create_task(monitor_ui_state(websocket))
+
             last_processed_msgid = None
 
             while True:
+                # Проверка состояния управления перед обработкой
+                if uwa_control_state == "stopped":
+                    print("[!] Stop command received. Shutting down gracefully.")
+                    ui_monitor_task.cancel()
+                    break
+
+                if uwa_control_state == "paused":
+                    last_processed_msgid = None  # очистка при паузе т.к. во время паузы могли пройти новые блоки
+                    await asyncio.sleep(2)
+                    continue
+
                 full_text = await get_page_text(websocket)
 
                 # Ищем все JSON-подобные блоки в тексте страницы с учетом вложенности
@@ -477,13 +765,7 @@ async def main_loop():
                                     "Only one JSON block per message is allowed."
                                 ),
                             }
-                            with open(output_file, "w", encoding="utf-8") as f:
-                                json.dump(
-                                    error_response, f, ensure_ascii=False, indent=2
-                                )
-                            print(
-                                f"\n[!] Multiple blocks detected. Error written to {output_file}"
-                            )
+                            print("\n[!] Multiple blocks detected.")
 
                             result_text = json.dumps(
                                 error_response, ensure_ascii=False, indent=2
@@ -531,10 +813,10 @@ async def main_loop():
                                     if (
                                         field in result_item
                                         and isinstance(result_item[field], str)
-                                        and len(result_item[field]) > 50
+                                        and len(result_item[field]) > 15
                                     ):
                                         result_item[field] = (
-                                            result_item[field][:50] + "..."
+                                            result_item[field][:15] + "..."
                                         )
                             else:
                                 result_item["result"] = (
@@ -546,12 +828,6 @@ async def main_loop():
                         # Формируем итоговый ответ
                         response = {"uwa_msg_id": current_msgid, "tools": results}
 
-                        with open(output_file, "w", encoding="utf-8") as f:
-                            json.dump(response, f, ensure_ascii=False, indent=2)
-
-                        print(
-                            f"  > Result written to {output_file}. Please copy it manually."
-                        )
                         last_processed_msgid = current_msgid
 
                         result_text = json.dumps(response, ensure_ascii=False, indent=2)
@@ -568,11 +844,6 @@ async def main_loop():
                                 "uwa_msg_id": error_id,
                                 "error": f"JSON Decode Error: {e!s}",
                             }
-                            with open(output_file, "w", encoding="utf-8") as f:
-                                json.dump(
-                                    error_response, f, ensure_ascii=False, indent=2
-                                )
-                            print(f"  > Error written to {output_file}")
 
                             result_text = json.dumps(
                                 error_response, ensure_ascii=False, indent=2
