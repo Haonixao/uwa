@@ -12,9 +12,9 @@ It effectively gives the AI persistent, real-world execution capabilities.
 - **Terminal Execution** — Run any commands with full output capture
 - **File Operations** — Safe read/patch
 - **Autonomous & Safe** — Continuous monitoring with Double Patch Protection
-- **Auto-injection** — Automatically pastes results back into the captured chat input field
+- **Auto-injection & Auto-send** — Automatically pastes results into the captured chat input field and triggers the send action (via native form submission or Enter key emulation), enabling fully automated closed-loop execution.
 - **Chrome Integration** — Automatically finds the active tab via DevTools Protocol
-- **In-Browser Runtime Control** — An automatically injected, draggable floating UI panel to Pause, Resume, or Stop the agent's execution loop, with theme support (Auto/Dark/Light).
+- **Seamless Runtime Control** — An automatically injected, draggable floating UI panel to Pause, Resume, or Stop the agent's execution loop. Pausing allows you to inspect progress and intervene without breaking the session or requiring a full restart.
 - **Field Capture** — One-click calibration of the chat input field via the UI panel button.
 - **Result Modal** — If auto-injection fails, a draggable modal window appears with the result for manual copying.
 
@@ -72,6 +72,17 @@ pip install websockets
 
 7. **Fallback Modal:**
    If the agent cannot insert the result automatically (e.g., field not captured or path became invalid), a draggable modal window will appear in the center of the screen with the full result text. You can copy it manually and close the window.
+
+## Closed-Loop Workflow & Control
+
+The agent now supports a fully automated closed-loop execution cycle. Once the input field is captured, the agent will automatically paste the tool results and trigger the send action, allowing the AI to continue its task without manual intervention.
+
+However, you retain absolute control over the process:
+- **Pause**: Instantly halts the execution loop. This is not a shutdown; it allows you to safely read the AI's progress, verify intermediate results, or manually adjust the chat.
+- **Resume**: Seamlessly continues the monitoring and execution loop from where it left off, without losing context or requiring re-initialization.
+- **Stop**: Completely terminates the agent's execution loop.
+
+This design ensures that automation serves your workflow, while keeping you in the driver's seat to prevent unwanted autonomous behavior.
 
 ## Safety Notes
 

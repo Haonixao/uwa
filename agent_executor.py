@@ -57,7 +57,10 @@ async def set_page_input(websocket, text, attempts=10, delay=1):
     safe_text = json.dumps(text)
 
     js_insert = f"""
-    (function() {{
+    (async function() {{
+        // Задержка перед началом действий, чтобы UI успел завершить рендеринг
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
         const panel = document.getElementById('uwa-control-panel');
         if (!panel || !panel.dataset.inputPath) {{
             return JSON.stringify({{ ok: false, reason: 'no_path' }});
@@ -105,7 +108,35 @@ async def set_page_input(websocket, text, attempts=10, delay=1):
             el.dispatchEvent(new Event('input', {{ bubbles: true }}));
         }}
 
-        return JSON.stringify({{ ok: true }});
+        // Отправка сразу после вставки (на том же элементе)
+        let sendMethod = 'none';
+        
+        // Пробуем Native Form Submission
+        if (el.form && typeof el.form.requestSubmit === 'function') {{
+            try {{
+                el.form.requestSubmit();
+                sendMethod = 'form_submit';
+            }} catch (e) {{
+                // Переходим к эмуляции Enter
+            }}
+        }}
+        
+        // Если form.submit не сработал, эмулируем Enter
+        if (sendMethod === 'none') {{
+            const eventInit = {{
+                key: 'Enter',
+                code: 'Enter',
+                keyCode: 13,
+                which: 13,
+                bubbles: true,
+                cancelable: true
+            }};
+            el.dispatchEvent(new KeyboardEvent('keydown', eventInit));
+            el.dispatchEvent(new KeyboardEvent('keyup', eventInit));
+            sendMethod = 'keyboard_event';
+        }}
+
+        return JSON.stringify({{ ok: true, sendMethod: sendMethod }});
     }})()
     """
 
@@ -116,7 +147,11 @@ async def set_page_input(websocket, text, attempts=10, delay=1):
                     {
                         "id": call_id,
                         "method": "Runtime.evaluate",
-                        "params": {"expression": expr, "returnByValue": True},
+                        "params": {
+                            "expression": expr,
+                            "returnByValue": True,
+                            "awaitPromise": True
+                        },
                     }
                 )
             )
@@ -132,7 +167,8 @@ async def set_page_input(websocket, text, attempts=10, delay=1):
     for i in range(attempts):
         data = await eval_js(js_insert, 100 + i)
         if data.get("ok"):
-            print(f"  [+] Text inserted on attempt {i + 1}.")
+            send_method = data.get("sendMethod", "unknown")
+            print(f"  [+] Text inserted and sent on attempt {i + 1} (method: {send_method}).")
             return True
 
         reason = data.get("reason", "unknown")

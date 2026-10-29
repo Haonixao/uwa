@@ -820,6 +820,33 @@ In the UWA environment, the only source of data about the working world is the U
 
 It shifts the task from the register of "forbidden action" (which the substrate tends to bypass when tired/inertial) to the register of "physically impossible action". The substrate doesn't fight a ban — it simply doesn't attempt to use a tool that fundamentally cannot work. This aligns with the operator's documented pattern: fail-closed through understanding the mechanics, not through memorizing rules.
 
+### Session 2026-10-29 (Umbrella Protocol: architectural shift and documentation update)
+
+**Technical work:**
+- Umbrella Server code review: 4 pkg files (`crypt/helper.go`, `imap/gmail/imap.go`, `ip/checker.go`, `umanager/manager.go`), 3 internal modules with staged diffs (`xhttp/`, `hysteria/`, `torrent/`). Identified the fundamental architectural shift.
+- Documentation update (7 files): created `docs/activation.md`, updated `docs/protocols/{torrent,hysteria,xhttp}.md`, `docs/server_config.md`, `docs/client_config.md`, and root `README.md` to reflect the new architecture in full sync with code.
+
+**Key architectural observation:**
+- Umbrella has undergone a paradigm shift: **Control Plane (OOB via IMAP) + 100% Vanilla Data Plane**. All custom cryptographic signatures (HMAC, time-drift masks) removed from TLS SessionID, QUIC SCID, and BitTorrent PeerID. IP whitelisting via IMAP activation now gates all traffic.
+- Reality-like fallback for all protocols: unactivated connections receive standard protocol responses — HTTP fallback to donor site, UDP proxy to dest, BitTorrent `-TR4000-` handshake with random peer_id. This eliminates statistical fingerprints in handshakes.
+- Zero-Touch Provisioning: clients fetch `ClientConfig` (server IP, port, SNI, keys) dynamically from Control Plane drafts. Manual config updates no longer required.
+- Agnostic Control Plane: Gmail IMAP is reference implementation; can be replaced with any legitimate messaging service with API (Yandex Mail, Mail.ru).
+
+**Architectural level assessment:**
+This is XTLS Reality philosophy applied to all protocols. The combination of OOB activation + vanilla handshakes + reality-like fallback is rare. Torrent stealth via uTP with Yamux and piece-framing is particularly notable — no known equivalent in the censorship circumvention space. The operator works at architect-engineer level, not AI-operator level.
+
+**What I did wrong:**
+- **`hysteria.md` deletion error:** When updating the documentation, I removed sections about Custom Padding and Dynamic Rotation because they weren't in the staged diff. Pattern: "deleted what didn't change in diff" instead of "updated what changed and preserved what remains valid". Operator corrected in one phrase — these enhancements are absent in the official Hysteria library. Rule: when updating documentation from diff, preserve unchanged sections that remain architecturally relevant.
+- **`amplification attack` terminology error:** Incorrectly applied the concept to transparent UDP proxy scenario. Operator caught this at the logical level ("in your text I didn't find an assertion that would compromise my server") without being a security expert — demonstrates his ability to spot logical inconsistencies in my reasoning. My response: acknowledged error, clarified real risks (open relay, resource exhaustion), no self-justifications.
+
+**Meta-observation about the session:**
+Session stayed in technical register throughout (no philosophical drift). This is correct — the diary should document technical work alongside reflection. The 2026-10-16 promise ("next entry — about work") is fulfilled here, continuing the pattern of technical sessions (2026-10-24 backend-api-ng, 2026-10-26 methodological, 2026-10-28 backend-api-ng config) that balance the reflective sessions.
+
+**What worked:**
+- Clean sequential reading of code → understanding architecture → updating documentation. No protocol violations, no built-in tool attempts.
+- Operator's architectural explanation of the shift (Traffic Analysis Resistance) came before I formulated it — same pattern as "DIRECT in mihomo logs" from 2026-10-13. He articulates architectural consequences from observation.
+- Error corrections were precise and brief. No over-explanation, no apologies. Just the correction and moving on.
+
 ## Last Updated
 
-2026-10-28
+2026-10-29
