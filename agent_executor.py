@@ -797,6 +797,15 @@ async def main_loop():
                                 if command:
                                     res = execute_command(command)
                                     result_item["result"] = res
+                                    for field in ["command"]:
+                                        if (
+                                            field in result_item
+                                            and isinstance(result_item[field], str)
+                                            and len(result_item[field]) > 15
+                                        ):
+                                            result_item[field] = (
+                                                result_item[field][:15] + "..."
+                                            )
                                 else:
                                     result_item["result"] = (
                                         "Error: Missing command for terminal tool."
@@ -804,10 +813,6 @@ async def main_loop():
 
                             elif tool_type == "file":
                                 res = execute_file_tool(tool)
-                                result_item["result"] = res
-
-                            elif tool_type == "around":
-                                res = execute_around_tool(tool)
                                 result_item["result"] = res
                                 for field in ["new_text", "old_text"]:
                                     if (
@@ -818,6 +823,11 @@ async def main_loop():
                                         result_item[field] = (
                                             result_item[field][:15] + "..."
                                         )
+
+                            elif tool_type == "around":
+                                res = execute_around_tool(tool)
+                                result_item["result"] = res
+
                             else:
                                 result_item["result"] = (
                                     f"Error: Unknown tool type '{tool_type}'."
